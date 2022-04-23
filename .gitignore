@@ -6,3 +6,5 @@
 **/*.pth
 admin/local.py
 pretrained_networks/*
+events.out.*
+*.png
