@@ -15,7 +15,15 @@
 import torch
 import random
 import cv2
+import os
 import numpy as np
+import matplotlib.pyplot as plt
+
+random.seed(10)
+import sys
+import time
+sys.path.append('/home/tony/Desktop/deep-rawburst-sr/')
+
 import data.camera_pipeline as rgb2raw
 from utils.data_format_utils import torch_to_numpy, numpy_to_torch
 
@@ -81,6 +89,30 @@ def rgb2rawburst(image, burst_size, downsample_factor=1, burst_transformation_pa
                                                    downsample_factor=downsample_factor,
                                                    transformation_params=burst_transformation_params,
                                                    interpolation_type=interpolation_type)
+    
+    plot = False
+    if plot:
+        time.sleep(5)
+        num = np.random.randint(1000000)
+        plt.figure(num)
+        flow = flow_vectors[..., 50, 50].numpy()
+        for f in flow:
+            plt.arrow(0, 0, f[0], f[1], color='red', width = 0.01, head_width = 0.1)
+        
+        a = burst_transformation_params["a"]
+        b = burst_transformation_params["b"]
+        theta = burst_transformation_params["theta"]
+        
+        for i in range(100):
+            phi = np.random.uniform(0, 1)*2*np.pi
+            x_e = np.cos(phi) * a/4
+            y_e = np.sin(phi) * b/4
+            translation = (x_e*np.cos(theta) - y_e*np.sin(theta), 
+                            x_e*np.sin(theta) + y_e*np.cos(theta))
+            plt.scatter(translation[0], translation[1], color='black', s=0.5)
+            
+        plt.savefig(f"sample_plot/degenerate/sample_{num}.png")
+    
 
     # mosaic
     image_burst = rgb2raw.mosaic(image_burst_rgb.clone())
@@ -122,7 +154,6 @@ def get_tmat(image_shape, translation, theta, shear_values, scale_factors):
                         [0.0, 0.0, 1.0]])
 
     t_mat = t_scale @ t_rot @ t_shear @ t_mat
-
     t_mat = t_mat[:2, :]
 
     return t_mat
@@ -148,6 +179,7 @@ def single2lrburst(image, burst_size, downsample_factor=1, transformation_params
     else:
         raise ValueError
 
+    # Convert float array to uint8 format
     normalize = False
     if isinstance(image, torch.Tensor):
         if image.max() < 2.0:
@@ -160,8 +192,12 @@ def single2lrburst(image, burst_size, downsample_factor=1, transformation_params
 
     rvs, cvs = torch.meshgrid([torch.arange(0, image.shape[0]),
                                torch.arange(0, image.shape[1])])
-
+    
+    # print(rvs.shape) -> torch.Size([432, 432])
+    # print(cvs.shape) -> torch.Size([432, 432])
     sample_grid = torch.stack((cvs, rvs, torch.ones_like(cvs)), dim=-1).float()
+    
+    # print(sample_grid.shape) -> torch.Size([432, 432, 3])
 
     for i in range(burst_size):
         if i == 0:
@@ -174,11 +210,22 @@ def single2lrburst(image, burst_size, downsample_factor=1, transformation_params
             scale_factor = (1.0, 1.0)
         else:
             # Sample random image transformation parameters
+            # max_translation = 24
             max_translation = transformation_params.get('max_translation', 0.0)
 
             if max_translation <= 0.01:
                 shift = (downsample_factor / 2.0) - 0.5
                 translation = (shift, shift)
+            elif "ellipse" in transformation_params.keys() and transformation_params["ellipse"]==True:
+                a = transformation_params.get('a', 1.0)
+                b = transformation_params.get('b', 1.0)
+                theta_ellipse = transformation_params.get('theta', 0.0)
+                phi = np.random.uniform(0, 1)*2*np.pi
+                x_e = np.cos(phi) * a
+                y_e = np.sin(phi) * b
+                translation = (x_e*np.cos(theta_ellipse) - y_e*np.sin(theta_ellipse), 
+                               x_e*np.sin(theta_ellipse) + y_e*np.cos(theta_ellipse))
+                # print((translation[0])**2/a**2 + (translation[1])**2/b**2)
             else:
                 translation = (random.uniform(-max_translation, max_translation),
                                random.uniform(-max_translation, max_translation))
@@ -186,6 +233,7 @@ def single2lrburst(image, burst_size, downsample_factor=1, transformation_params
             max_rotation = transformation_params.get('max_rotation', 0.0)
             theta = random.uniform(-max_rotation, max_rotation)
 
+            # Skew
             max_shear = transformation_params.get('max_shear', 0.0)
             shear_x = random.uniform(-max_shear, max_shear)
             shear_y = random.uniform(-max_shear, max_shear)
@@ -206,12 +254,15 @@ def single2lrburst(image, burst_size, downsample_factor=1, transformation_params
         t_mat_tensor = torch.from_numpy(t_mat)
 
         # Apply the sampled affine transformation
+        
+        # Affine images translate by t_mat
         image_t = cv2.warpAffine(image, t_mat, output_sz, flags=interpolation,
                                  borderMode=cv2.BORDER_CONSTANT)
 
         t_mat_tensor_3x3 = torch.cat((t_mat_tensor.float(), torch.tensor([0.0, 0.0, 1.0]).view(1, 3)), dim=0)
         t_mat_tensor_inverse = t_mat_tensor_3x3.inverse()[:2, :].contiguous()
 
+        # Calculate the position vector to origin base image by inverse of t_mat
         sample_pos_inv = torch.mm(sample_grid.view(-1, 3), t_mat_tensor_inverse.t().float()).view(
             *sample_grid.shape[:2], -1)
 
@@ -244,3 +295,45 @@ def single2lrburst(image, burst_size, downsample_factor=1, transformation_params
     flow_vectors = sample_pos_inv_all - sample_pos_inv_all[:1, ...]
 
     return burst_images, flow_vectors
+
+if __name__ == '__main__':
+    image = np.load("/home/tony/Desktop/deep-rawburst-sr/data/image.npy")
+    image = torch.from_numpy(image)
+    # print(image.shape) -> torch.Size([3, 432, 432])
+    
+    burst_size = 8
+    downsample_factor = 4
+    a, b = random.uniform(0, 24), random.uniform(0, 24)
+    theta = random.uniform(0, 180) * np.pi / 180
+    burst_transformation_params = {'max_translation': 1,
+                                    'max_rotation': 0.0,
+                                    'max_shear': 0.0,
+                                    'max_scale': 0.0,
+                                    'border_crop': 24,
+                                    'ellipse': True,
+                                    'theta': theta,
+                                    'a': a,
+                                    'b': b}
+    
+    image_burst_rgb, flow_vectors = single2lrburst(image, burst_size=burst_size,
+                                                   downsample_factor=downsample_factor,
+                                                   transformation_params=burst_transformation_params)
+    # (432 - max_translation*2) / 4 = 96
+    # print(image_burst_rgb.shape) -> torch.Size([8, 3, 96, 96])
+    # print(flow_vectors.shape) -> torch.Size([8, 2, 96, 96])
+    
+    # for flow in flow_vectors:
+    flow = flow_vectors[..., 50, 50].numpy()
+
+    for f in flow:
+        plt.arrow(0, 0, f[0], f[1], color='red', width = 0.01, head_width = 0.1)
+    
+    for i in range(100):    
+        phi = np.random.uniform(0, 1)*2*np.pi
+        x_e = np.cos(phi) * a/4
+        y_e = np.sin(phi) * b/4
+        translation = (x_e*np.cos(theta) - y_e*np.sin(theta), 
+                        x_e*np.sin(theta) + y_e*np.cos(theta))
+        plt.scatter(translation[0], translation[1], color='black', s=0.5)
+    
+    plt.savefig("sample_dir.png")

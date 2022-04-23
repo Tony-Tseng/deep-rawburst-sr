@@ -1,0 +1,19 @@
+# Evaluation:
+python evaluation/synburst/compute_score.py dbsr_default
+
+python evaluation/synburst/save_results.py dbsr_default
+
+python evaluation/synburst/visualize_results.py dbsr_default
+
+-> 改 evaluation>synburst>experiments>dbsr_default 中的 parameter
+    -> 這樣會 load local.py 中 save_data_path 的位置
+
+# Training:
+python run_training.py dbsr synthetic_degenerate
+
+# TensorBoard
+ssh -N -f -L localhost:6006:localhost:6006 tony@cml0.csie.ntu.edu.tw -p 20075
+
+tensorboard --logdir exp/tensorboard/dbsr/synthetic_SSL/ --port 6006
+
+https://github.com/goutamgmb/deep-burst-sr

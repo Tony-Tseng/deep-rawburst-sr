@@ -15,8 +15,9 @@
 import torch.optim as optim
 import dataset as datasets
 from data import processing, sampler, DataLoader
-import models.dbsr.dbsrnet as dbsr_nets
-import actors.dbsr_actors as dbsr_actors
+import models.dbsr.sslnet as sslnet
+import models.dbsr.SSL_model as ssl_model
+import actors.ssl_actors as ssl_actors
 from trainers import SimpleTrainer
 import data.transforms as tfm
 from admin.multigpu import MultiGPU
@@ -41,6 +42,7 @@ def run(settings):
                                             'border_crop': 24}
     settings.burst_reference_aligned = True
     settings.image_processing_params = {'random_ccm': True, 'random_gains': True, 'smoothstep': True, 'gamma': True, 'add_noise': True}
+        
 
     zurich_raw2rgb_train = datasets.ZurichRAW2RGB(split='train')
     zurich_raw2rgb_val = datasets.ZurichRAW2RGB(split='test')
@@ -70,7 +72,7 @@ def run(settings):
     loader_val = DataLoader('val', dataset_val, training=False, num_workers=settings.num_workers,
                             stack_dim=0, batch_size=settings.batch_size, epoch_interval=5)
 
-    net = dbsr_nets.dbsrnet_cvpr2021(enc_init_dim=64, enc_num_res_blocks=9, enc_out_dim=512,
+    net = sslnet.dbsrnet_cvpr2021(enc_init_dim=64, enc_num_res_blocks=9, enc_out_dim=512,
                                      dec_init_conv_dim=64, dec_num_pre_res_blocks=5,
                                      dec_post_conv_dim=32, dec_num_post_res_blocks=4,
                                      upsample_factor=settings.downsample_factor * 2,
@@ -80,16 +82,18 @@ def run(settings):
                                      gauss_blur_sd=1.0,
                                      icnrinit=True
                                      )
+    degrad_net = ssl_model.Degrade(4)
 
     # Wrap the network for multi GPU training
     if settings.multi_gpu:
         net = MultiGPU(net, dim=0)
 
-    objective = {'rgb': PixelWiseError(metric='l1', boundary_ignore=40), 'psnr': PSNR(boundary_ignore=40)}
+    objective = {'rgb': PixelWiseError(metric='l1', boundary_ignore=0), 'psnr': PSNR(boundary_ignore=0), 
+                 'ssl': PixelWiseError(metric='l1', boundary_ignore=0)}
 
     loss_weight = {'rgb': 1.0}
 
-    actor = dbsr_actors.DBSRSyntheticActor(net=net, objective=objective, loss_weight=loss_weight)
+    actor = ssl_actors.SSL1waySyntheticActor(net=net, degrad_net= degrad_net, objective=objective, loss_weight=loss_weight)
 
     optimizer = optim.Adam([{'params': actor.net.parameters(), 'lr': 1e-4}],
                            lr=2e-4)
@@ -97,4 +101,5 @@ def run(settings):
     lr_scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=40, gamma=0.2)
     trainer = SimpleTrainer(actor, [loader_train, loader_val], optimizer, settings, lr_scheduler)
 
-    trainer.train(100, load_latest=True, fail_safe=True)
+    trainer.train(200, load_latest=True, fail_safe=True)
+ 

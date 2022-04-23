@@ -20,7 +20,38 @@ import models.loss.spatial_color_alignment as sca_utils
 import math
 import lpips
 
+class SimSiamError(nn.Module):
+    def __init__(self, boundary_ignore=None):
+        super().__init__()
+        self.boundary_ignore = boundary_ignore
+        # self.loss_fn = torch.norm
+        
+    def forward(self, pred, proj, valid=None):
+        proj = proj.detach()
+        
+        if self.boundary_ignore is not None:
+            # Remove boundary pixels
+            pred = pred[..., self.boundary_ignore:-self.boundary_ignore, self.boundary_ignore:-self.boundary_ignore]
+            proj = proj[..., self.boundary_ignore:-self.boundary_ignore, self.boundary_ignore:-self.boundary_ignore]
 
+            if valid is not None:
+                valid = valid[..., self.boundary_ignore:-self.boundary_ignore, self.boundary_ignore:-self.boundary_ignore]
+                
+        if valid is None:
+            pred_norm = F.normalize(pred, dim=-1, p=2)
+            proj_norm = F.normalize(proj, dim=-1, p=2)
+            err = 2 - 2 * (pred_norm * proj_norm).sum(dim=-1).mean()
+        else:
+            pred_norm = F.normalize(pred, dim=-1, p=2)
+            proj_norm = F.normalize(proj, dim=-1, p=2)
+            err = 2 - 2 * (pred_norm * proj_norm).sum(dim=-1)
+
+            eps = 1e-12
+            elem_ratio = err.numel() / valid.numel()
+            err = (err * valid.float()).sum() / (valid.float().sum() * elem_ratio + eps)
+
+        return err   
+            
 class PixelWiseError(nn.Module):
     """ Computes pixel-wise error using the specified metric. Optionally boundary pixels are ignored during error
         calculation """

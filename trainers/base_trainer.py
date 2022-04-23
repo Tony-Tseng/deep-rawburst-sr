@@ -55,9 +55,9 @@ class BaseTrainer:
             load_latest - Bool indicating whether to resume from latest epoch.
             fail_safe - Bool indicating whether the training to automatically restart in case of any crashes.
         """
-
+        
         epoch = -1
-        num_tries = 10
+        num_tries = 1
         for i in range(num_tries):
             try:
                 if load_latest:

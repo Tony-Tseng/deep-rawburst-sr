@@ -73,6 +73,7 @@ class SyntheticBurstProcessing(BaseProcessing):
         self.downsample_factor = downsample_factor
 
         self.burst_transformation_params = burst_transformation_params
+        self.degenerate = True
 
         self.crop_scale_range = crop_scale_range
         self.crop_ar_range = crop_ar_range
@@ -99,6 +100,16 @@ class SyntheticBurstProcessing(BaseProcessing):
             assert self.crop_scale_range is None and self.crop_ar_range is None
             frame_crop = prutils.center_crop(data['frame'], crop_sz)
 
+        if self.burst_transformation_params.get("ellipse", False):
+            import random
+            import numpy as np
+            a, b = random.uniform(0, 24), random.uniform(0, 24)
+            theta = random.uniform(0, 180) * np.pi / 180
+            self.burst_transformation_params["a"] = a
+            self.burst_transformation_params["b"] = b
+            self.burst_transformation_params["theta"] = theta
+            
+        
         # Generate synthetic RAW burst
         burst, frame_gt, burst_rgb, flow_vector, meta_info = syn_burst_generation.rgb2rawburst(frame_crop,
                                                                                                self.burst_size,
@@ -119,6 +130,8 @@ class SyntheticBurstProcessing(BaseProcessing):
 
         data['frame_gt'] = frame_gt
         data['burst'] = burst
+        data['flow'] = flow_vector
+        data['ssl_gt'] = burst_rgb[0]
         data['meta_info'] = meta_info
         return data
 
