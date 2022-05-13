@@ -158,23 +158,25 @@ class BYOLSyntheticActor(BaseActor):
         # data['burst'] -> (8, 8, 4, 48, 48)
         # data['ssl_gt'] -> (8, 3, 96, 96)
         # upper_degrade = self.predict_net(data['burst'])
-        upper_latent = self.degrad_net(data['burst'])
-        # upper_latent, upper_aux_dict = self.net(upper_degrade)
+        upper_degrade = self.degrad_net(data['burst'])
+        upper_latent, upper_aux_dict = self.net(upper_degrade)
         
-        lower_latent, lower_aux_dict = self.net(data['burst'])
-        # lower_latent = self.degrad_net(lower_sr)
+        lower_sr, lower_aux_dict = self.net(data['burst'])
+        lower_latent = self.degrad_net(lower_sr)
 
         upper_proj = self.project_net(upper_latent)
         lower_proj = self.project_net(lower_latent)
         
         upper_pred = self.predict_net(upper_proj)
-        lower_pred = self.predict_net(lower_proj)
+        
+        # cos = self.objective['cosine'](upper_proj, lower_proj).mean()
+        # print(cos)
+        
         # Compute loss
-        # aux_loss = self.objective['ssl'](upper_pred, data['ssl_gt'])
-        ssl_loss = self.objective['ssl'](upper_pred, lower_proj)/2 + self.objective['ssl'](lower_pred, upper_proj)/2
+        ssl_loss = self.objective['ssl'](upper_pred, lower_proj)
 
         if 'psnr' in self.objective.keys():
-            psnr = self.objective['psnr'](upper_latent.clone().detach(), data['frame_gt'])
+            psnr = self.objective['psnr'](lower_sr.clone().detach(), data['frame_gt'])
 
         total_loss = ssl_loss
 
@@ -189,16 +191,16 @@ class BYOLSyntheticActor(BaseActor):
 
         return total_loss, stats
 
-
-class DBSRRealWorldActor(BaseActor):
+class DBSRRealWorldSSLActor(BaseActor):
     """Actor for training DBSR model on real-world bursts from BurstSR dataset"""
-    def __init__(self, net, objective, alignment_net, loss_weight=None, sr_factor=4):
+    def __init__(self, net, degrad_net, objective, alignment_net, loss_weight=None, sr_factor=4):
         super().__init__(net, objective)
         if loss_weight is None:
             loss_weight = {'rgb': 1.0}
 
         self.sca = SpatialColorAlignment(alignment_net.eval(), sr_factor=sr_factor)
         self.loss_weight = loss_weight
+        self.degrad_net = degrad_net
 
     def to(self, device):
         """ Move the network to device
@@ -212,25 +214,37 @@ class DBSRRealWorldActor(BaseActor):
         # Run network
         gt = data['frame_gt']
         burst = data['burst']
-        pred, aux_dict = self.net(burst)
+        # pred, aux_dict = self.net(burst)
 
-        # Perform spatial and color alignment of the prediction
-        pred_warped_m, valid = self.sca(pred, gt, burst)
+        # # Perform spatial and color alignment of the prediction
+        # pred_warped_m, valid = self.sca(pred, gt, burst)
+
+        # # Compute loss
+        # loss_rgb_raw = self.objective['rgb'](pred_warped_m, gt, valid=valid)
+
+        # loss_rgb = self.loss_weight['rgb'] * loss_rgb_raw
+        
+        upper_degrade = self.degrad_net(burst)
+        upper_pred, upper_aux_dict = self.net(upper_degrade)
+        
+        lower_sr, lower_aux_dict = self.net(burst)
+        lower_pred = self.degrad_net(lower_sr)
 
         # Compute loss
-        loss_rgb_raw = self.objective['rgb'](pred_warped_m, gt, valid=valid)
-
-        loss_rgb = self.loss_weight['rgb'] * loss_rgb_raw
-
+        aux_loss = self.objective['ssl'](upper_pred, data['ssl_gt'])
+        deg_loss = self.objective['ssl'](lower_pred, data['ssl_gt'])
+    
+        pred_warped_m, valid = self.sca(lower_sr, gt, burst)
         if 'psnr' in self.objective.keys():
             # detach, otherwise there is memory leak
             psnr = self.objective['psnr'](pred_warped_m.clone().detach(), gt, valid=valid)
 
-        loss = loss_rgb
+        loss = deg_loss + aux_loss
 
         stats = {'Loss/total': loss.item(),
-                 'Loss/rgb': loss_rgb.item(),
-                 'Loss/raw/rgb': loss_rgb_raw.item()}
+                 'Loss/deg': deg_loss.item(),
+                 'Loss/aux': aux_loss.item()
+                }
 
         if 'psnr' in self.objective.keys():
             stats['Stat/psnr'] = psnr.item()

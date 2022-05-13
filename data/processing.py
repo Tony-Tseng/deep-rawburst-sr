@@ -23,6 +23,10 @@ import data.synthetic_burst_generation as syn_burst_generation
 from admin.tensordict import TensorDict
 import math
 
+import imageio
+import numpy as np
+from colour_demosaicing import demosaicing_CFA_Bayer_bilinear, demosaicing_CFA_Bayer_DDFAPD
+import time
 
 class BaseProcessing:
     """ Base class for Processing. Processing class is used to process the data returned by a dataset, before passing it
@@ -135,6 +139,12 @@ class SyntheticBurstProcessing(BaseProcessing):
         data['meta_info'] = meta_info
         return data
 
+def pixel_shuffle(raw):
+    c, h, w = raw.shape
+    raw = raw.reshape([2,2,h,w])
+    raw = raw.transpose([2,0,3,1])
+    
+    return raw.reshape(h*2, w*2)
 
 class BurstSRProcessing(BaseProcessing):
     """ The processing class used for training on BurstSR dataset. """
@@ -279,6 +289,25 @@ class BurstSRProcessing(BaseProcessing):
 
         data['burst'] = burst.float()
         data['frame_gt'] = gt_image_data.float()
+        
+        raw_base = burst[0].detach().cpu().numpy()
+        raw_shuffle = pixel_shuffle(raw_base)
+        raw_demosaic = demosaicing_CFA_Bayer_DDFAPD(raw_shuffle).transpose([2,0,1])
+        data['ssl_gt'] = torch.from_numpy(raw_demosaic)
+        
+        # This part is for debugging
+        # raw_shuffle = data['raw_shuffle'].detach().cpu().numpy()
+        # raw_shuffle_store = np.round(255.0 * np.clip(raw_shuffle, 0.0, 1.0)).astype(np.uint8)
+        # imageio.imwrite('raw_shuffle.png', raw_shuffle_store)
+        
+        # raw_demosaic = demosaicing_CFA_Bayer_DDFAPD(raw_shuffle)
+        # raw_demosaic_store = np.round(255.0 * np.clip(raw_demosaic, 0.0, 1.0)).astype(np.uint8)
+        # imageio.imwrite('raw_demosaic.png', raw_demosaic_store)
+        
+        # gt_rgb = data['gt_vis'].detach().cpu().numpy().transpose([1,2,0])
+        # imageio.imwrite('raw_gt.png', gt_rgb)
+        
+        # time.sleep(1)
 
         # burst_image_meta_info['burst_name'] = data['burst_name']
         data['meta_info_burst'] = burst_image_meta_info

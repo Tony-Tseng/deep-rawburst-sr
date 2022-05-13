@@ -15,7 +15,9 @@
 import torch.optim as optim
 import dataset as datasets
 from data import processing, sampler, DataLoader
+import actors.ssl_actors as ssl_actors
 import actors.dbsr_actors as dbsr_actors
+import models.dbsr.SSL_model as ssl_model
 from trainers import SimpleTrainer
 from utils.loading import load_network
 from admin.multigpu import MultiGPU
@@ -28,7 +30,7 @@ def run(settings):
     settings.description = 'Default settings for fine-tuning a DBSR model on BurstSR dataset'
     settings.batch_size = 8
     crop_sz = 56
-    settings.num_workers = 8
+    settings.num_workers = 1
     settings.multi_gpu = False
     settings.print_interval = 1
 
@@ -56,7 +58,8 @@ def run(settings):
     loader_val = DataLoader('val', dataset_val, training=False, num_workers=settings.num_workers,
                             stack_dim=0, batch_size=settings.batch_size)
 
-    net = load_network('dbsr/synthetic_SSL')
+    net = load_network('dbsr/default_synthetic')
+    degrad_net = ssl_model.Degrade(4)
 
     # Wrap the network for multi GPU training
     if settings.multi_gpu:
@@ -64,16 +67,18 @@ def run(settings):
 
     bi = 40
     objective = {
-        'rgb':  PixelWiseError(metric='l1', boundary_ignore=bi), 'psnr': PSNR(boundary_ignore=40)
+        'rgb':  PixelWiseError(metric='l1', boundary_ignore=bi), 'psnr': PSNR(boundary_ignore=40),
+        'ssl':  PixelWiseError(metric='l1', boundary_ignore=10)
     }
 
     loss_weight = {
-        'rgb': 10.0,
+        'rgb': 10.0, 'ssl': 10.0
     }
 
     pwcnet = PWCNet(load_pretrained=True,
                     weights_path='{}/pwcnet-network-default.pth'.format(env_settings().pretrained_nets_dir))
-    actor = dbsr_actors.DBSRRealWorldActor(net=net, objective=objective, loss_weight=loss_weight, alignment_net=pwcnet)
+    actor = ssl_actors.DBSRRealWorldSSLActor(net=net, degrad_net=degrad_net, objective=objective, loss_weight=loss_weight, alignment_net=pwcnet)
+    # actor = dbsr_actors.DBSRRealWorldActor(net=net, objective=objective, loss_weight=loss_weight, alignment_net=pwcnet)
 
     optimizer = optim.Adam([{'params': actor.net.parameters(), 'lr': 1e-4}],
                            lr=1e-4)

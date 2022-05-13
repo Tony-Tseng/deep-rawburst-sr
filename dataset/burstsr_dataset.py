@@ -281,14 +281,30 @@ class BurstSRDataset(BaseRawBurstDataset):
         canon_im = CanonImage.load('{}/{}/{}/canon'.format(self.root, self.split, self.burst_list[burst_id]))
         return canon_im
 
+    def pixel_unshuffle(self, raw):
+        c, h, w = raw.shape
+        raw = raw.reshape([2,2,h,w])
+        raw = torch.permute(raw, (2,0,3,1))
+        
+        return raw.reshape(h*2, w*2)
+
     def get_burst(self, burst_id, im_ids, info=None):
         frames = [self._get_raw_image(burst_id, i) for i in im_ids]
+        # raw_ground = self._get_raw_image(burst_id, 0)
 
         gt = self._get_gt_image(burst_id)
         if info is None:
             info = self.get_burst_info(burst_id)
 
         return frames, gt, info
+    
+    def get_visual(self, burst_id):
+        gt_visual = self._get_gt_image(burst_id).get_image_data(substract_black_level=True, white_balance=True)
+        raw_visual = self._get_raw_image(burst_id, 0).get_image_data(substract_black_level=True, white_balance=True, normalize=True)
+        raw_shuffle = self.pixel_unshuffle(raw_visual)
+        
+        return gt_visual, raw_shuffle
+        
 
 
 def get_burstsr_val_set():

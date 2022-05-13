@@ -19,39 +19,37 @@ import models.loss.msssim as msssim
 import models.loss.spatial_color_alignment as sca_utils
 import math
 import lpips
+from torchvision.models import vgg16
 
-class SimSiamError(nn.Module):
+class CosineError(nn.Module):
+    """ Computes pixel-wise error using the specified metric. Optionally boundary pixels are ignored during error
+        calculation """
     def __init__(self, boundary_ignore=None):
         super().__init__()
         self.boundary_ignore = boundary_ignore
-        # self.loss_fn = torch.norm
-        
-    def forward(self, pred, proj, valid=None):
-        proj = proj.detach()
-        
+        self.criterion = nn.CosineSimilarity()
+
+    def forward(self, pred, gt, valid=None):
         if self.boundary_ignore is not None:
             # Remove boundary pixels
             pred = pred[..., self.boundary_ignore:-self.boundary_ignore, self.boundary_ignore:-self.boundary_ignore]
-            proj = proj[..., self.boundary_ignore:-self.boundary_ignore, self.boundary_ignore:-self.boundary_ignore]
+            gt = gt[..., self.boundary_ignore:-self.boundary_ignore, self.boundary_ignore:-self.boundary_ignore]
 
             if valid is not None:
                 valid = valid[..., self.boundary_ignore:-self.boundary_ignore, self.boundary_ignore:-self.boundary_ignore]
-                
+
+        # Valid indicates image regions which should be used for loss calculation
         if valid is None:
-            pred_norm = F.normalize(pred, dim=-1, p=2)
-            proj_norm = F.normalize(proj, dim=-1, p=2)
-            err = 2 - 2 * (pred_norm * proj_norm).sum(dim=-1).mean()
+            err = self.criterion(pred, gt)
         else:
-            pred_norm = F.normalize(pred, dim=-1, p=2)
-            proj_norm = F.normalize(proj, dim=-1, p=2)
-            err = 2 - 2 * (pred_norm * proj_norm).sum(dim=-1)
+            err = self.criterion(pred, gt, reduction='none')
 
             eps = 1e-12
             elem_ratio = err.numel() / valid.numel()
             err = (err * valid.float()).sum() / (valid.float().sum() * elem_ratio + eps)
 
-        return err   
-            
+        return err
+          
 class PixelWiseError(nn.Module):
     """ Computes pixel-wise error using the specified metric. Optionally boundary pixels are ignored during error
         calculation """
@@ -220,3 +218,94 @@ class AlignedL2(nn.Module):
         mse = (mse * valid.float()).sum() / (valid.float().sum()*elem_ratio + eps)
 
         return mse
+
+class PerceptualError(nn.Module):
+    """_summary_
+    Reference: https://gist.github.com/alper111/8233cdb0414b4cb5853f2f730ab95a49
+
+    Args:
+        nn (_type_): _description_
+    """
+    def __init__(self, boundary_ignore=None, resize=True):
+        super(PerceptualError, self).__init__()
+        self.boundary_ignore = boundary_ignore
+        blocks = []
+        vgg_model = vgg16(pretrained=True).to("cuda:0")
+        blocks.append(vgg_model.features[:4].eval())
+        blocks.append(vgg_model.features[4:9].eval())
+        blocks.append(vgg_model.features[9:16].eval())
+        blocks.append(vgg_model.features[16:23].eval())
+        for bl in blocks:
+            for p in bl.parameters():
+                p.requires_grad = False
+        self.blocks = torch.nn.ModuleList(blocks)
+        self.transform = torch.nn.functional.interpolate
+        self.resize = resize
+        self.register_buffer("mean", torch.tensor([0.485, 0.456, 0.406]).to("cuda:0").view(1, 3, 1, 1))
+        self.register_buffer("std", torch.tensor([0.229, 0.224, 0.225]).to("cuda:0").view(1, 3, 1, 1))
+
+
+    def forward(self, pred, gt, valid=None, feature_layers=[0, 1, 2, 3], style_layers=[]):
+        if self.boundary_ignore is not None:
+            # Remove boundary pixels
+            input = pred[..., self.boundary_ignore:-self.boundary_ignore, self.boundary_ignore:-self.boundary_ignore]
+            target = gt[..., self.boundary_ignore:-self.boundary_ignore, self.boundary_ignore:-self.boundary_ignore]
+
+            if valid is not None:
+                valid = valid[..., self.boundary_ignore:-self.boundary_ignore, self.boundary_ignore:-self.boundary_ignore]
+                
+        if input.shape[1] != 3:
+            input = input.repeat(1, 3, 1, 1)
+            target = target.repeat(1, 3, 1, 1)
+        input = (input-self.mean) / self.std
+        target = (target-self.mean) / self.std
+        if self.resize:
+            input = self.transform(input, mode='bilinear', size=(224, 224), align_corners=False)
+            target = self.transform(target, mode='bilinear', size=(224, 224), align_corners=False)
+        loss = 0.0
+        x = input
+        y = target
+        for i, block in enumerate(self.blocks):
+            x = block(x)
+            y = block(y)
+            if i in feature_layers:
+                loss += torch.nn.functional.l1_loss(x, y)
+            if i in style_layers:
+                act_x = x.reshape(x.shape[0], x.shape[1], -1)
+                act_y = y.reshape(y.shape[0], y.shape[1], -1)
+                gram_x = act_x @ act_x.permute(0, 2, 1)
+                gram_y = act_y @ act_y.permute(0, 2, 1)
+                loss += torch.nn.functional.l1_loss(gram_x, gram_y)
+        return loss
+
+class SimSiamError(nn.Module):
+    def __init__(self, boundary_ignore=None):
+        super().__init__()
+        self.boundary_ignore = boundary_ignore
+        # self.loss_fn = torch.norm
+        
+    def forward(self, pred, proj, valid=None):
+        proj = proj.detach()
+        
+        if self.boundary_ignore is not None:
+            # Remove boundary pixels
+            pred = pred[..., self.boundary_ignore:-self.boundary_ignore, self.boundary_ignore:-self.boundary_ignore]
+            proj = proj[..., self.boundary_ignore:-self.boundary_ignore, self.boundary_ignore:-self.boundary_ignore]
+
+            if valid is not None:
+                valid = valid[..., self.boundary_ignore:-self.boundary_ignore, self.boundary_ignore:-self.boundary_ignore]
+                
+        if valid is None:
+            pred_norm = F.normalize(pred, dim=-1, p=2)
+            proj_norm = F.normalize(proj, dim=-1, p=2)
+            err = 2 - 2 * (pred_norm * proj_norm).sum(dim=-1).mean()
+        else:
+            pred_norm = F.normalize(pred, dim=-1, p=2)
+            proj_norm = F.normalize(proj, dim=-1, p=2)
+            err = 2 - 2 * (pred_norm * proj_norm).sum(dim=-1)
+
+            eps = 1e-12
+            elem_ratio = err.numel() / valid.numel()
+            err = (err * valid.float()).sum() / (valid.float().sum() * elem_ratio + eps)
+
+        return err   

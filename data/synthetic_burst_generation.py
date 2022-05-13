@@ -99,19 +99,19 @@ def rgb2rawburst(image, burst_size, downsample_factor=1, burst_transformation_pa
         for f in flow:
             plt.arrow(0, 0, f[0], f[1], color='red', width = 0.01, head_width = 0.1)
         
-        a = burst_transformation_params["a"]
-        b = burst_transformation_params["b"]
-        theta = burst_transformation_params["theta"]
+        # a = burst_transformation_params["a"]
+        # b = burst_transformation_params["b"]
+        # theta = burst_transformation_params["theta"]
         
-        for i in range(100):
-            phi = np.random.uniform(0, 1)*2*np.pi
-            x_e = np.cos(phi) * a/4
-            y_e = np.sin(phi) * b/4
-            translation = (x_e*np.cos(theta) - y_e*np.sin(theta), 
-                            x_e*np.sin(theta) + y_e*np.cos(theta))
-            plt.scatter(translation[0], translation[1], color='black', s=0.5)
+        # for i in range(100):
+        #     phi = np.random.uniform(0, 1)*2*np.pi
+        #     x_e = np.cos(phi) * a/4
+        #     y_e = np.sin(phi) * b/4
+        #     translation = (x_e*np.cos(theta) - y_e*np.sin(theta), 
+        #                     x_e*np.sin(theta) + y_e*np.cos(theta))
+        #     plt.scatter(translation[0], translation[1], color='black', s=0.5)
             
-        plt.savefig(f"sample_plot/degenerate/sample_{num}.png")
+        plt.savefig(f"sample_plot/uniform/sample_{num}.png")
     
 
     # mosaic
