@@ -45,7 +45,7 @@ def run(settings):
 
     loader_train = DataLoader('train', dataset_train, training=True, num_workers=settings.num_workers,
                               stack_dim=0, batch_size=settings.batch_size)
-
+    
     # ********************* Val
     data_processing_val = processing.BurstSRProcessing(transform=None,
                                                        substract_black_level=True, crop_sz=crop_sz)
@@ -56,7 +56,7 @@ def run(settings):
     loader_val = DataLoader('val', dataset_val, training=False, num_workers=settings.num_workers,
                             stack_dim=0, batch_size=settings.batch_size)
 
-    net = load_network('dbsr/default_synthetic')
+    net = load_network('dbsr/synthetic_SSL')
 
     # Wrap the network for multi GPU training
     if settings.multi_gpu:

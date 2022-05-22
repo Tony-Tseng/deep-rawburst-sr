@@ -21,86 +21,9 @@ from trainers import SimpleTrainer
 import data.transforms as tfm
 from admin.multigpu import MultiGPU
 from models.loss.image_quality_v2 import PSNR, PixelWiseError
-import kernel_model
-import kernel_option
-from kernel_logger import logger
-import torch
-import kernel_loss
-import numpy as np
-from kernel_trainer.trainer_kernel import Trainer_Kernel
 
 
-def kernel_run(settings, args):
-    torch.manual_seed(args.seed)
-    chkp = logger.Logger(args)
-
-    print("Selected task: {}".format(args.task))
-    net = kernel_model.Model(args, chkp)
-
-    loss = kernel_loss.Loss(args, chkp) if not args.test_only else None
-
-    settings.batch_size = 16
-    settings.num_workers = 8
-
-    settings.crop_sz = (384, 384)
-    settings.burst_sz = 8
-    settings.downsample_factor = 4
-
-    settings.burst_transformation_params = {'max_translation': 24.0,
-                                            'max_rotation': 1.0,
-                                            'max_shear': 0.0,
-                                            'max_scale': 0.0,
-                                            'border_crop': 24}
-    settings.image_processing_params = {'random_ccm': True, 'random_gains': True, 'smoothstep': True, 'gamma': True, 'add_noise': True}
-
-    zurich_raw2rgb_train = datasets.ZurichRAW2RGB(split='train')
-    zurich_raw2rgb_val = datasets.ZurichRAW2RGB(split='test')
-
-    transform_train = tfm.Transform(tfm.ToTensorAndJitter(0.0, normalize=True), tfm.RandomHorizontalFlip())
-    transform_val = tfm.Transform(tfm.ToTensorAndJitter(0.0, normalize=True), tfm.RandomHorizontalFlip())
-
-    data_processing_train = processing.SyntheticBurstProcessing(settings.crop_sz, settings.burst_sz,
-                                                                settings.downsample_factor,
-                                                                burst_transformation_params=settings.burst_transformation_params,
-                                                                transform=transform_train,
-                                                                image_processing_params=settings.image_processing_params)
-    data_processing_val = processing.SyntheticBurstProcessing(settings.crop_sz, settings.burst_sz,
-                                                              settings.downsample_factor,
-                                                              burst_transformation_params=settings.burst_transformation_params,
-                                                              transform=transform_val,
-                                                              image_processing_params=settings.image_processing_params)
-
-    # Train sampler and loader
-    dataset_train = sampler.RandomImage([zurich_raw2rgb_train], [1],
-                                        samples_per_epoch=settings.batch_size * 1000, processing=data_processing_train)
-    dataset_val = sampler.RandomImage([zurich_raw2rgb_val], [1],
-                                      samples_per_epoch=settings.batch_size * 200, processing=data_processing_val)
-    
-
-    loader_train = DataLoader('train', dataset_train, training=True, num_workers=settings.num_workers,
-                              stack_dim=0, batch_size=settings.batch_size)
-    loader_val = DataLoader('val', dataset_val, training=False, num_workers=settings.num_workers,
-                            stack_dim=0, batch_size=settings.batch_size, epoch_interval=5)
-
-    if args.task == 'PretrainKernel':
-        t = Trainer_Kernel(args, [loader_train, loader_val], net, loss, chkp)
-    # elif args.task == 'FlowVideoSR':
-    #     t = Trainer_Flow_Video(args, loader, model, loss, chkp)
-    # else:
-    #     raise NotImplementedError('Task [{:s}] is not found'.format(args.task))
-
-
-    while not t.terminate():
-        t.train()
-        # t.test()
-
-    chkp.done()
-
-    
-
-
-
-def run(settings, args):
+def run(settings):
     settings.description = 'Default settings for training DBSR models on synthetic burst dataset '
     settings.batch_size = 8
     settings.num_workers = 8
@@ -115,9 +38,11 @@ def run(settings, args):
                                             'max_rotation': 1.0,
                                             'max_shear': 0.0,
                                             'max_scale': 0.0,
-                                            'border_crop': 24}
+                                            'border_crop': 24,
+                                            'ellipse': True}
     settings.burst_reference_aligned = True
     settings.image_processing_params = {'random_ccm': True, 'random_gains': True, 'smoothstep': True, 'gamma': True, 'add_noise': True}
+        
 
     zurich_raw2rgb_train = datasets.ZurichRAW2RGB(split='train')
     zurich_raw2rgb_val = datasets.ZurichRAW2RGB(split='test')
@@ -141,7 +66,6 @@ def run(settings, args):
                                         samples_per_epoch=settings.batch_size * 1000, processing=data_processing_train)
     dataset_val = sampler.RandomImage([zurich_raw2rgb_val], [1],
                                       samples_per_epoch=settings.batch_size * 200, processing=data_processing_val)
-    
 
     loader_train = DataLoader('train', dataset_train, training=True, num_workers=settings.num_workers,
                               stack_dim=0, batch_size=settings.batch_size)
@@ -159,7 +83,6 @@ def run(settings, args):
                                      icnrinit=True
                                      )
 
-    # print(net)
     # Wrap the network for multi GPU training
     if settings.multi_gpu:
         net = MultiGPU(net, dim=0)

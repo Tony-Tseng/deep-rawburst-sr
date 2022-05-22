@@ -19,6 +19,8 @@ from admin.stats import AverageMeter, StatValue
 from admin.tensorboard import TensorboardWriter
 import torch
 import time
+import numpy as np
+import matplotlib.pyplot as plt
 
 
 class SimpleTrainer(BaseTrainer):
@@ -62,6 +64,7 @@ class SimpleTrainer(BaseTrainer):
         torch.set_grad_enabled(loader.training)
 
         self._init_timing()
+        flow_array = np.empty((0, 1))
 
         for i, data in enumerate(loader, 1):
             # get inputs
@@ -87,6 +90,11 @@ class SimpleTrainer(BaseTrainer):
 
             # print statistics
             self._print_stats(i, loader, batch_size)
+            
+        # num = np.random.randint(1000000)
+        # plt.figure(num)
+        # plt.hist(flow_array, bins = np.arange(20))
+        # plt.savefig(f"sample_plot/flow_hist/hist_{num}.png")
 
     def train_epoch(self):
         """Do one epoch for each loader."""

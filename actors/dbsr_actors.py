@@ -14,7 +14,74 @@
 
 from actors.base_actor import BaseActor
 from models.loss.spatial_color_alignment import SpatialColorAlignment
+import torch
+import matplotlib.pyplot as plt
+import numpy as np
 
+def plot_flow(ground, pred):
+    ground_flow = ground[:,1:,:,::2, ::2].cpu().numpy()
+    predict_flow = pred.cpu().numpy()
+    
+    ground_mean_flow = np.mean(ground_flow, axis=(3,4))
+    predict_mean_flow = np.mean(predict_flow, axis=(3,4))
+    
+    num = np.random.randint(1000000)
+    plt.figure(num)
+    # for i in range(ground_mean_flow.shape[1]):
+    plt.arrow(0, 0, ground_mean_flow[0, 0, 1], ground_mean_flow[0, 0, 1], color='red', width = 0.01, head_width = 0.1)
+    plt.arrow(0, 0, predict_mean_flow[0, 0, 1], predict_mean_flow[0, 0, 1], color='blue', width = 0.01, head_width = 0.1)
+    plt.legend(['Ground optical', 'Predict optical'])
+    plt.title('Predict & Ground Optical Flow')
+    plt.savefig(f"sample_plot/flow/flow_{num}.png")
+
+    
+def calc_flow(ground, pred):
+    ground_flow = ground[:,1:,:,::2, ::2].cpu().numpy()
+    predict_flow = pred.cpu().numpy()
+    
+    ground_mean_flow = np.mean(ground_flow, axis=(3,4))
+    predict_mean_flow = np.mean(predict_flow, axis=(3,4))
+    
+    diff_flow = ground_mean_flow - predict_mean_flow
+    norm_flow = np.linalg.norm(diff_flow, axis=2)
+
+    return norm_flow.reshape(-1, 1)
+    
+    
+# class DBSRSyntheticActor(BaseActor):
+#     """Actor for training DBSR model on synthetic bursts """
+#     def __init__(self, net, objective, loss_weight=None):
+#         super().__init__(net, objective)
+#         if loss_weight is None:
+#             loss_weight = {'rgb': 1.0}
+#         self.loss_weight = loss_weight
+
+#     def __call__(self, data, flow_array):
+#         # Run network
+#         pred, aux_dict = self.net(data['burst'])
+        
+#         plot = True
+#         if plot:
+#             plot_flow(data["flow"], -aux_dict["offsets"])
+#             # flow_array = np.vstack((flow_array, calc_flow(data["flow"], -aux_dict["offsets"])))
+
+#         # Compute loss
+#         loss_rgb_raw = self.objective['rgb'](pred, data['frame_gt'])
+#         loss_rgb = self.loss_weight['rgb'] * loss_rgb_raw
+
+#         if 'psnr' in self.objective.keys():
+#             psnr = self.objective['psnr'](pred.clone().detach(), data['frame_gt'])
+
+#         loss = loss_rgb
+
+#         stats = {'Loss/total': loss.item(),
+#                  'Loss/rgb': loss_rgb.item(),
+#                  'Loss/raw/rgb': loss_rgb_raw.item()}
+
+#         if 'psnr' in self.objective.keys():
+#             stats['Stat/psnr'] = psnr.item()
+
+#         return loss, stats, flow_array
 
 class DBSRSyntheticActor(BaseActor):
     """Actor for training DBSR model on synthetic bursts """
@@ -31,15 +98,19 @@ class DBSRSyntheticActor(BaseActor):
         # Compute loss
         loss_rgb_raw = self.objective['rgb'](pred, data['frame_gt'])
         loss_rgb = self.loss_weight['rgb'] * loss_rgb_raw
+        
+        loss_perceptual = self.objective['perceptual'](pred, data['frame_gt'])
+        loss_perceptual = self.loss_weight['perceptual'] * loss_perceptual
 
         if 'psnr' in self.objective.keys():
             psnr = self.objective['psnr'](pred.clone().detach(), data['frame_gt'])
 
-        loss = loss_rgb
+        loss = loss_rgb + loss_perceptual
 
         stats = {'Loss/total': loss.item(),
                  'Loss/rgb': loss_rgb.item(),
-                 'Loss/raw/rgb': loss_rgb_raw.item()}
+                 'Loss/raw/rgb': loss_rgb_raw.item(),
+                 'Loss/raw/perceptual': loss_perceptual.item()}
 
         if 'psnr' in self.objective.keys():
             stats['Stat/psnr'] = psnr.item()
