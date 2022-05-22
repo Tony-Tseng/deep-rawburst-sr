@@ -31,9 +31,14 @@ class DBSRNet(nn.Module):
         self.decoder = decoder      # Decodes the merged embeddings to generate HR RGB image
 
     def forward(self, im):
+        print(im.shape)
         out_enc = self.encoder(im)
+        print(out_enc["ref_feat"].shape)
+        print(out_enc["oth_feat"].shape)
         out_merge = self.merging(out_enc)
+        print(out_merge['fused_enc'].shape)
         out_dec = self.decoder(out_merge)
+        print(out_dec['pred'].shape)
 
         return out_dec['pred'], {'offsets': out_enc['offsets'], 'fusion_weights': out_merge['fusion_weights']}
 
