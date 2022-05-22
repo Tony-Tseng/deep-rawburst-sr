@@ -5,7 +5,6 @@ import importlib
 import multiprocessing
 import cv2 as cv
 import torch.backends.cudnn
-import kernel_option
 
 env_path = os.path.join(os.path.dirname(__file__))
 if env_path not in sys.path:
@@ -34,17 +33,22 @@ def run_training(train_module, train_name, args, cudnn_benchmark=True):
     settings.script_name = train_name
     settings.project_path = '{}/{}'.format(train_module, train_name)
     
-
     expr_module = importlib.import_module('train_settings.{}.{}'.format(train_module, train_name))
-    expr_func = getattr(expr_module, 'kernel_run')
+    expr_func = getattr(expr_module, 'run')
 
     expr_func(settings, args)
 
 
 def main():
-    args = kernel_option.args
-    
-    run_training(args.train_module, args.train_name, args, args.cudnn_benchmark)
+    parser = argparse.ArgumentParser(description='Run a train scripts in train_settings.')
+    parser.add_argument('train_module', type=str, help='Name of module in the "train_settings/" folder.')
+    parser.add_argument('train_name', type=str, help='Name of the train settings file.')
+    parser.add_argument('--cudnn_benchmark', type=bool, default=True, help='Set cudnn benchmark on (1) or off (0) (default is on).')
+
+    args = parser.parse_args()
+
+    run_training(args.train_module, args.train_name, args.cudnn_benchmark)
+
 
 
 if __name__ == '__main__':
