@@ -97,7 +97,50 @@ class SSLSyntheticActor(BaseActor):
             stats['Stat/psnr'] = psnr.item()
 
         return total_loss, stats
-    
+
+
+class SSLkernelSyntheticActor(BaseActor):
+    """Actor for training DBSR model on synthetic bursts """
+    def __init__(self, net, degrad_net, kernel_net, objective, loss_weight=None):
+        super().__init__(net, objective)
+        if loss_weight is None:
+            loss_weight = {'rgb': 1.0}
+        self.loss_weight = loss_weight
+        self.degrad_net = degrad_net
+        self.kernel_net = kernel_net
+
+    def __call__(self, data):
+        # Run network
+        # data['burst'] -> (8, 8, 4, 48, 48)
+        # data['ssl_gt'] -> (8, 3, 96, 96)
+        upper_degrade = self.degrad_net(data['burst'])
+        upper_pred, upper_aux_dict = self.net(upper_degrade)
+        
+        lower_sr, lower_aux_dict = self.net(data['burst'])
+        lower_pred = self.degrad_net(lower_sr)
+
+        # Compute loss
+        aux_loss = self.objective['ssl'](upper_pred, data['ssl_gt'])
+        deg_loss = self.objective['ssl'](lower_pred, data['ssl_gt'])
+
+        if 'psnr' in self.objective.keys():
+            psnr = self.objective['psnr'](lower_sr.clone().detach(), data['frame_gt'])
+
+        total_loss = deg_loss + aux_loss
+
+        stats = {'Loss/total': total_loss.item(),
+                #  'Loss/rgb': loss_rgb.item(),
+                #  'Loss/raw/rgb': loss_rgb_raw.item(),
+                 'Loss/deg': deg_loss.item(),
+                 'Loss/aux': aux_loss.item()
+                 }
+
+        if 'psnr' in self.objective.keys():
+            stats['Stat/psnr'] = psnr.item()
+
+        return total_loss, stats
+
+
 class SSL1waySyntheticActor(BaseActor):
     """Actor for training DBSR model on synthetic bursts """
     def __init__(self, net, degrad_net, objective, loss_weight=None):

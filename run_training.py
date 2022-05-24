@@ -13,7 +13,7 @@ if env_path not in sys.path:
 import admin.settings as ws_settings
 
 
-def run_training(train_module, train_name, cudnn_benchmark=True):
+def run_training(train_module, train_name, args, cudnn_benchmark=True):
     """Run a train scripts in train_settings.
     args:
         train_module: Name of module in the "train_settings/" folder.
@@ -32,11 +32,11 @@ def run_training(train_module, train_name, cudnn_benchmark=True):
     settings.module_name = train_module
     settings.script_name = train_name
     settings.project_path = '{}/{}'.format(train_module, train_name)
-
+    
     expr_module = importlib.import_module('train_settings.{}.{}'.format(train_module, train_name))
     expr_func = getattr(expr_module, 'run')
 
-    expr_func(settings)
+    expr_func(settings, args)
 
 
 def main():
@@ -48,6 +48,7 @@ def main():
     args = parser.parse_args()
 
     run_training(args.train_module, args.train_name, args.cudnn_benchmark)
+
 
 
 if __name__ == '__main__':
