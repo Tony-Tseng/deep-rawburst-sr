@@ -9,10 +9,12 @@ def main():
     #                                  unique_name='DBSR_syn'))                   # Evaluate pre-trained network weights
     network_list.append(NetworkParam(module='dbsr', parameter='default_synthetic'))
     # network_list.append(NetworkParam(module='dbsr', parameter='synthetic_degenerate'))
-    network_list.append(NetworkParam(module='dbsr', parameter='synthetic_SSL'))
+    # network_list.append(NetworkParam(module='dbsr', parameter='synthetic_SSL'))
     # network_list.append(NetworkParam(module='dbsr', parameter='synthetic_BYOL'))
-    network_list.append(NetworkParam(module='dbsr', parameter='synthetic_SSL_1way'))
-    network_list.append(NetworkParam(module='dbsr', parameter='synthetic_SSLRAW'))
+    # network_list.append(NetworkParam(module='dbsr', parameter='synthetic_SSL_1way'))
+    # network_list.append(NetworkParam(module='dbsr', parameter='synthetic_SSLRAW'))
+    network_list.append(NetworkParam(module='dbsr', parameter='synthetic_SL_kernel'))
+    # network_list.append(NetworkParam(module='dbsr', parameter='synthetic_SSL_kernel_test'))
     # network_list.append(NetworkParam(module='dbsr', parameter='default_synthetic_pcl'))
 
     return network_list

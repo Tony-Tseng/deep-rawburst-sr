@@ -21,15 +21,18 @@ import actors.ssl_actors as ssl_actors
 from trainers import SimpleTrainer
 import data.transforms as tfm
 from admin.multigpu import MultiGPU
-from models.loss.image_quality_v2 import PSNR, CosineError, SimSiamError
+from models.loss.image_quality_v2 import PSNR, PixelWiseError
+
+from kernel_model import kernel
+import torch
 
 
 def run(settings):
-    settings.description = 'Default settings for training DBSR models on synthetic burst dataset'
+    settings.description = 'Default settings for training DBSR models on synthetic burst dataset '
     settings.batch_size = 8
     settings.num_workers = 8
     settings.multi_gpu = False
-    settings.print_interval = 500
+    settings.print_interval = 1
 
     settings.crop_sz = (384, 384)
     settings.burst_sz = 8
@@ -41,7 +44,8 @@ def run(settings):
                                             'max_scale': 0.0,
                                             'border_crop': 24}
     settings.burst_reference_aligned = True
-    settings.image_processing_params = {'random_ccm': True, 'random_gains': True, 'smoothstep': True, 'gamma': True, 'add_noise': True} 
+    settings.image_processing_params = {'random_ccm': True, 'random_gains': True, 'smoothstep': True, 'gamma': True, 'add_noise': True}
+        
 
     zurich_raw2rgb_train = datasets.ZurichRAW2RGB(split='train')
     zurich_raw2rgb_val = datasets.ZurichRAW2RGB(split='test')
@@ -81,25 +85,29 @@ def run(settings):
                                      gauss_blur_sd=1.0,
                                      icnrinit=True
                                      )
-    project_net = ssl_model.Projection(27648, 1024)
-    predict_net = ssl_model.Predictor(27648, 1024)
-    degrad_net = ssl_model.Degrade(4)
-    
+    degrad_net = ssl_model.Degrade(4).to('cuda:0')
+    kernel_net = kernel.KernelNet().to('cuda:0')
+    kernel_net.load_state_dict(
+        torch.load('pretrained_networks/kernel_pretrained.pt', map_location='cuda:0'),
+    )
+
     # Wrap the network for multi GPU training
     if settings.multi_gpu:
         net = MultiGPU(net, dim=0)
 
-    objective = {'psnr': PSNR(boundary_ignore=40), 'ssl': SimSiamError(), 'cosine': CosineError()}
+    objective = {'rgb': PixelWiseError(metric='l1', boundary_ignore=10), 'psnr': PSNR(boundary_ignore=10), 
+                 'ssl': PixelWiseError(metric='l1', boundary_ignore=10)}
 
     loss_weight = {'rgb': 1.0}
 
-    actor = ssl_actors.BYOLSyntheticActor(net=net, project_net=project_net, predict_net= predict_net, degrad_net= degrad_net, objective=objective, loss_weight=loss_weight)
+    actor = ssl_actors.SSLkernelSyntheticActor(net=net, degrad_net=degrad_net, kernel_net=kernel_net, objective=objective, loss_weight=loss_weight)
 
-    optimizer = optim.Adam([{'params': actor.net.parameters(), 'lr': 5e-5}],
-                           lr=5e-5)
+    optimizer = optim.Adam([{'params': actor.net.parameters(), 'lr': 1e-4}],
+                           lr=2e-4)
 
     lr_scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=40, gamma=0.2)
+    # lr_scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=15, eta_min=5)
     trainer = SimpleTrainer(actor, [loader_train, loader_val], optimizer, settings, lr_scheduler)
 
-    trainer.train(90, load_latest=True, fail_safe=True)
+    trainer.train(100, load_latest=True, fail_safe=True)
  

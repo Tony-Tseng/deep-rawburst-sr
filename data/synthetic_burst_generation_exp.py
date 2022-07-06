@@ -50,7 +50,7 @@ def rgb2rawburst(image, burst_size, downsample_factor=1, burst_transformation_pa
     tmp_img = image.permute((1,2,0)).numpy()
     kernel = get_blur_kernel()[:, :, None]
     image_blur = ndimage.convolve(tmp_img, kernel, mode='reflect')
-    # image_blur = torch.from_numpy(image_blur).permute((2,0,1))
+    image = torch.from_numpy(image_blur).permute((2,0,1))
     
     # # debug purpose
     # save_image(tmp_img, "image")
@@ -104,19 +104,6 @@ def rgb2rawburst(image, burst_size, downsample_factor=1, burst_transformation_pa
                                                    transformation_params=burst_transformation_params,
                                                    interpolation_type=interpolation_type)
     
-    if burst_transformation_params.get('border_crop') is not None:
-        border_crop = burst_transformation_params.get('border_crop')
-        image_blur = image_blur[border_crop:-border_crop, border_crop:-border_crop, :]
-        
-    blur_down = cv2.resize( image_blur, None, fx=1.0 / downsample_factor, fy=1.0 / downsample_factor,
-                            interpolation=cv2.INTER_LINEAR )
-    blur_down = torch.from_numpy(blur_down).permute((2,0,1))
-    blur_raw = rgb2raw.mosaic(blur_down)
-    if image_processing_params['add_noise']:
-        shot_noise_level, read_noise_level = rgb2raw.random_noise_levels()
-        blur_raw = rgb2raw.add_noise(blur_raw, shot_noise_level, read_noise_level)
-    blur_raw = blur_raw.clamp(0.0, 1.0)
-    
     plot = False
     if plot:
         time.sleep(5)
@@ -137,8 +124,9 @@ def rgb2rawburst(image, burst_size, downsample_factor=1, burst_transformation_pa
         #     translation = (x_e*np.cos(theta) - y_e*np.sin(theta), 
         #                     x_e*np.sin(theta) + y_e*np.cos(theta))
         #     plt.scatter(translation[0], translation[1], color='black', s=0.5)
-
+            
         plt.savefig(f"sample_plot/uniform/sample_{num}.png")
+    
 
     # mosaic
     image_burst = rgb2raw.mosaic(image_burst_rgb.clone())
@@ -157,7 +145,7 @@ def rgb2rawburst(image, burst_size, downsample_factor=1, burst_transformation_pa
     meta_info = {'rgb2cam': rgb2cam, 'cam2rgb': cam2rgb, 'rgb_gain': rgb_gain, 'red_gain': red_gain,
                  'blue_gain': blue_gain, 'smoothstep': use_smoothstep, 'gamma': use_gamma,
                  'shot_noise_level': shot_noise_level, 'read_noise_level': read_noise_level}
-    return image_burst, image, image_burst_rgb, flow_vectors, meta_info, blur_raw
+    return image_burst, image, image_burst_rgb, flow_vectors, meta_info, image
 
 
 def get_tmat(image_shape, translation, theta, shear_values, scale_factors):

@@ -98,6 +98,51 @@ class SSLSyntheticActor(BaseActor):
 
         return total_loss, stats
     
+
+class SSLkernelSyntheticActor(BaseActor):
+    """Actor for training DBSR model on synthetic bursts """
+    def __init__(self, net, degrad_net, kernel_net, objective, loss_weight=None):
+        super().__init__(net, objective)
+        if loss_weight is None:
+            loss_weight = {'rgb': 1.0}
+        self.loss_weight = loss_weight
+        self.degrad_net = degrad_net
+        self.kernel_net = kernel_net
+
+    def __call__(self, data):
+        # Run network
+        # data['burst'] -> (8, 8, 4, 48, 48)
+        # data['ssl_gt'] -> (8, 3, 96, 96)
+        kernel = self.kernel_net(data['base_rgb'].float())
+        
+        upper_degrade = self.degrad_net(data['burst'], kernel)
+        upper_pred, upper_aux_dict = self.net(upper_degrade)
+        
+        lower_sr, lower_aux_dict = self.net(data['burst'])
+        lower_pred = self.degrad_net(lower_sr, kernel)
+
+        # Compute loss
+        aux_loss = self.objective['ssl'](upper_pred, data['ssl_gt'])
+        deg_loss = self.objective['ssl'](lower_pred, data['ssl_gt'])
+
+        if 'psnr' in self.objective.keys():
+            psnr = self.objective['psnr'](lower_sr.clone().detach(), data['frame_gt'])
+
+        total_loss = deg_loss + aux_loss
+
+        stats = {'Loss/total': total_loss.item(),
+                #  'Loss/rgb': loss_rgb.item(),
+                #  'Loss/raw/rgb': loss_rgb_raw.item(),
+                 'Loss/deg': deg_loss.item(),
+                 'Loss/aux': aux_loss.item()
+                 }
+
+        if 'psnr' in self.objective.keys():
+            stats['Stat/psnr'] = psnr.item()
+
+        return total_loss, stats
+    
+    
 class SSL1waySyntheticActor(BaseActor):
     """Actor for training DBSR model on synthetic bursts """
     def __init__(self, net, degrad_net, objective, loss_weight=None):
@@ -190,6 +235,69 @@ class BYOLSyntheticActor(BaseActor):
             stats['Stat/psnr'] = psnr.item()
 
         return total_loss, stats
+
+
+class DBSRRealkernelSSLActor(BaseActor):
+    def __init__(self, net, degrad_net, kernel_net, objective, alignment_net, loss_weight=None, sr_factor=4):
+        super().__init__(net, objective)
+        if loss_weight is None:
+            loss_weight = {'rgb': 1.0}
+
+        self.sca = SpatialColorAlignment(alignment_net.eval(), sr_factor=sr_factor)
+        self.loss_weight = loss_weight
+        self.degrad_net = degrad_net
+        self.kernel_net = kernel_net
+
+    def to(self, device):
+        """ Move the network to device
+        args:
+            device - device to use. 'cpu' or 'cuda'
+        """
+        self.net.to(device)
+        self.sca.to(device)
+        # self.kernel_net.to(device)
+
+    def __call__(self, data):
+        # Run network
+        gt = data['frame_gt']
+        burst = data['burst']
+        # pred, aux_dict = self.net(burst)
+
+        # # Perform spatial and color alignment of the prediction
+        # pred_warped_m, valid = self.sca(pred, gt, burst)
+
+        # # Compute loss
+        # loss_rgb_raw = self.objective['rgb'](pred_warped_m, gt, valid=valid)
+
+        kernel = self.kernel_net(data['base_rgb'].float())
+        
+        upper_degrade = self.degrad_net(burst, kernel)
+        upper_pred, upper_aux_dict = self.net(upper_degrade)
+        
+        lower_sr, lower_aux_dict = self.net(burst)
+        lower_pred = self.degrad_net(lower_sr, kernel)
+
+        # Compute loss
+        aux_loss = self.objective['ssl'](upper_pred, data['ssl_gt'])
+        deg_loss = self.objective['ssl'](lower_pred, data['ssl_gt'])
+    
+        pred_warped_m, valid = self.sca(lower_sr, gt, burst)
+        if 'psnr' in self.objective.keys():
+            # detach, otherwise there is memory leak
+            psnr = self.objective['psnr'](pred_warped_m.clone().detach(), gt, valid=valid)
+
+        loss = deg_loss + aux_loss
+
+        stats = {'Loss/total': loss.item(),
+                 'Loss/deg': deg_loss.item(),
+                 'Loss/aux': aux_loss.item()
+                }
+
+        if 'psnr' in self.objective.keys():
+            stats['Stat/psnr'] = psnr.item()
+
+        return loss, stats
+    
 
 class DBSRRealWorldSSLActor(BaseActor):
     """Actor for training DBSR model on real-world bursts from BurstSR dataset"""

@@ -19,14 +19,19 @@ import data.processing_utils as prutils
 import data.raw_image_processing as raw_processing
 
 import torch.nn.functional as F
-import data.synthetic_burst_generation as syn_burst_generation
+# import data.synthetic_burst_generation as syn_burst_generation
+import data.synthetic_burst_generation_exp as syn_burst_generation
 from admin.tensordict import TensorDict
 import math
 
 import imageio
 import numpy as np
-from colour_demosaicing import demosaicing_CFA_Bayer_bilinear, demosaicing_CFA_Bayer_DDFAPD
+from colour_demosaicing import demosaicing_CFA_Bayer_DDFAPD
 import time
+
+import cv2
+from data.postprocessing_functions import SimplePostProcess
+from dataset.burstsr_dataset import CanonImage
 
 class BaseProcessing:
     """ Base class for Processing. Processing class is used to process the data returned by a dataset, before passing it
@@ -106,16 +111,14 @@ class SyntheticBurstProcessing(BaseProcessing):
 
         if self.burst_transformation_params.get("ellipse", False):
             import random
-            import numpy as np
             a, b = random.uniform(0, 24), random.uniform(0, 24)
             theta = random.uniform(0, 180) * np.pi / 180
             self.burst_transformation_params["a"] = a
             self.burst_transformation_params["b"] = b
             self.burst_transformation_params["theta"] = theta
-            
         
         # Generate synthetic RAW burst
-        burst, frame_gt, burst_rgb, flow_vector, meta_info = syn_burst_generation.rgb2rawburst(frame_crop,
+        burst, frame_gt, burst_rgb, flow_vector, meta_info, blur_raw = syn_burst_generation.rgb2rawburst(frame_crop,
                                                                                                self.burst_size,
                                                                                                self.downsample_factor,
                                                                                                burst_transformation_params=self.burst_transformation_params,
@@ -137,6 +140,35 @@ class SyntheticBurstProcessing(BaseProcessing):
         data['flow'] = flow_vector
         data['ssl_gt'] = burst_rgb[0]
         data['meta_info'] = meta_info
+        
+        raw_base = burst[0].detach().cpu().numpy() #blur_raw
+        raw_shuffle = pixel_shuffle(raw_base)
+        raw_demosaic = demosaicing_CFA_Bayer_DDFAPD(raw_shuffle)
+        data['base_rgb'] = torch.from_numpy(raw_demosaic.transpose([2,0,1]))
+        # data['base_rgb'] = burst_rgb[0]
+
+        # raw_shuffle = np.round(255.0 * np.clip(raw_shuffle, 0.0, 1.0)).astype(np.uint8)
+        # raw_process = np.round(255.0 * np.clip(raw_demosaic, 0.0, 1.0)).astype(np.uint8)
+        # cv2.imwrite(f'syn_burst.png', raw_shuffle)
+        # cv2.imwrite(f'syn_demosaic.png', raw_demosaic)
+        
+        # rand = np.random.randint(100000000)
+        # process_fn = SimplePostProcess(return_np=True)
+        # input_numpy = data['base_rgb'].detach().cpu().numpy().transpose([1,2,0])
+        # input_numpy = np.round(255.0 * np.clip(input_numpy, 0.0, 1.0)).astype(np.uint8)
+        # input_process = process_fn.process(data['base_rgb'], meta_info)
+        # cv2.imwrite(f'tmp_img/input_{rand}.png', input_process)
+        
+        # raw_process = np.round(255.0 * np.clip(raw_shuffle, 0.0, 1.0)).astype(np.uint8)
+        # cv2.imwrite(f'tmp_img/raw_{rand}.png', raw_process)
+
+        # frame_gt_numpy = frame_gt
+        # frame_gt_process = process_fn.process(frame_gt_numpy, meta_info)
+        # cv2.imwrite(f'tmp_img/gt1_{rand}.png', frame_gt_process)
+
+        print("Store image")
+        time.sleep(5)
+        
         return data
 
 def pixel_shuffle(raw):
@@ -292,8 +324,36 @@ class BurstSRProcessing(BaseProcessing):
         
         raw_base = burst[0].detach().cpu().numpy()
         raw_shuffle = pixel_shuffle(raw_base)
-        raw_demosaic = demosaicing_CFA_Bayer_DDFAPD(raw_shuffle).transpose([2,0,1])
-        data['ssl_gt'] = torch.from_numpy(raw_demosaic)
+        raw_demosaic = demosaicing_CFA_Bayer_DDFAPD(raw_shuffle)
+        data['ssl_gt'] = torch.from_numpy(raw_demosaic.transpose([2,0,1]))
+        
+        # For kernel code
+        # raw_base = burst[0,...].detach().cpu().numpy()
+        # raw_shuffle = pixel_shuffle(raw_base)
+        # raw_demosaic = torch.from_numpy(demosaicing_CFA_Bayer_DDFAPD(raw_shuffle).transpose([2,0,1]))
+        input_process = CanonImage.generate_processed_image(data['ssl_gt'], burst_image_meta_info, return_np=False,
+                                                          gamma=True,
+                                                          smoothstep=True,
+                                                          no_white_balance=True,
+                                                          external_norm_factor=None)
+        data['base_rgb'] = input_process
+        # print(input_process)
+        # raw_demosaic = np.round(255.0 * np.clip(raw_demosaic, 0.0, 1.0)).astype(np.uint8)
+        # cv2.imwrite('real_rgb.png', input_process)
+        # cv2.imwrite('real_demosaic.png', raw_demosaic)
+        
+        # frame_gt_numpy = torch.from_numpy(data['frame_gt'].detach().cpu().numpy())
+        # frame_gt_numpy = gt_image_data.float()
+        # frame_gt_process = CanonImage.generate_processed_image(frame_gt_numpy, gt_image_meta_info, return_np=False,
+        #                                                   gamma=True,
+        #                                                   smoothstep=True,
+        #                                                   no_white_balance=False,
+        #                                                   external_norm_factor=None)
+        # data['frame_gt'] = frame_gt_process
+        # cv2.imwrite('real_gt.png', frame_gt_process)
+
+        # print("Save images")
+        # time.sleep(5)
         
         # This part is for debugging
         # raw_shuffle = data['raw_shuffle'].detach().cpu().numpy()

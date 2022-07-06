@@ -46,42 +46,50 @@ def calc_flow(ground, pred):
     norm_flow = np.linalg.norm(diff_flow, axis=2)
 
     return norm_flow.reshape(-1, 1)
-    
-    
-# class DBSRSyntheticActor(BaseActor):
-#     """Actor for training DBSR model on synthetic bursts """
-#     def __init__(self, net, objective, loss_weight=None):
-#         super().__init__(net, objective)
-#         if loss_weight is None:
-#             loss_weight = {'rgb': 1.0}
-#         self.loss_weight = loss_weight
 
-#     def __call__(self, data, flow_array):
-#         # Run network
-#         pred, aux_dict = self.net(data['burst'])
+class DBSRkernelSyntheticActor(BaseActor):
+    """Actor for training DBSR model on synthetic bursts """
+    def __init__(self, net, degrad_net, kernel_net, objective, loss_weight=None):
+        super().__init__(net, objective)
+        if loss_weight is None:
+            loss_weight = {'rgb': 1.0}
+        self.loss_weight = loss_weight
+        self.degrad_net = degrad_net
+        self.kernel_net = kernel_net
+
+    def __call__(self, data):
+        # Run network
+        # data['burst'] -> (8, 8, 4, 48, 48)
+        # data['ssl_gt'] -> (8, 3, 96, 96)
+        kernel = self.kernel_net(data['base_rgb'].float())
         
-#         plot = True
-#         if plot:
-#             plot_flow(data["flow"], -aux_dict["offsets"])
-#             # flow_array = np.vstack((flow_array, calc_flow(data["flow"], -aux_dict["offsets"])))
+        upper_degrade = self.degrad_net(data['burst'], kernel)
+        upper_pred, upper_aux_dict = self.net(upper_degrade)
+        
+        lower_sr, lower_aux_dict = self.net(data['burst'])
+        lower_pred = self.degrad_net(lower_sr, kernel)
 
-#         # Compute loss
-#         loss_rgb_raw = self.objective['rgb'](pred, data['frame_gt'])
-#         loss_rgb = self.loss_weight['rgb'] * loss_rgb_raw
+        # Compute loss
+        supervised_loss = self.objective['rgb'](lower_sr, data['frame_gt'])
+        
+        aux_loss = self.objective['ssl'](upper_pred, data['ssl_gt'])
+        deg_loss = self.objective['ssl'](lower_pred, data['ssl_gt'])
 
-#         if 'psnr' in self.objective.keys():
-#             psnr = self.objective['psnr'](pred.clone().detach(), data['frame_gt'])
+        if 'psnr' in self.objective.keys():
+            psnr = self.objective['psnr'](lower_sr.clone().detach(), data['frame_gt'])
 
-#         loss = loss_rgb
+        total_loss = supervised_loss
 
-#         stats = {'Loss/total': loss.item(),
-#                  'Loss/rgb': loss_rgb.item(),
-#                  'Loss/raw/rgb': loss_rgb_raw.item()}
+        stats = {'Loss/total': total_loss.item(),
+                 'Loss/supervised': supervised_loss.item(),
+                 'Loss/deg': deg_loss.item(),
+                 'Loss/aux': aux_loss.item()
+                 }
 
-#         if 'psnr' in self.objective.keys():
-#             stats['Stat/psnr'] = psnr.item()
+        if 'psnr' in self.objective.keys():
+            stats['Stat/psnr'] = psnr.item()
 
-#         return loss, stats, flow_array
+        return total_loss, stats    
 
 class DBSRSyntheticActor(BaseActor):
     """Actor for training DBSR model on synthetic bursts """
@@ -98,19 +106,15 @@ class DBSRSyntheticActor(BaseActor):
         # Compute loss
         loss_rgb_raw = self.objective['rgb'](pred, data['frame_gt'])
         loss_rgb = self.loss_weight['rgb'] * loss_rgb_raw
-        
-        loss_perceptual = self.objective['perceptual'](pred, data['frame_gt'])
-        loss_perceptual = self.loss_weight['perceptual'] * loss_perceptual
 
         if 'psnr' in self.objective.keys():
             psnr = self.objective['psnr'](pred.clone().detach(), data['frame_gt'])
 
-        loss = loss_rgb + loss_perceptual
+        loss = loss_rgb
 
         stats = {'Loss/total': loss.item(),
                  'Loss/rgb': loss_rgb.item(),
-                 'Loss/raw/rgb': loss_rgb_raw.item(),
-                 'Loss/raw/perceptual': loss_perceptual.item()}
+                 'Loss/raw/rgb': loss_rgb_raw.item()}
 
         if 'psnr' in self.objective.keys():
             stats['Stat/psnr'] = psnr.item()
@@ -164,3 +168,38 @@ class DBSRRealWorldActor(BaseActor):
             stats['Stat/psnr'] = psnr.item()
 
         return loss, stats
+
+# class DBSRSyntheticActor(BaseActor):
+#     """Actor for training DBSR model on synthetic bursts """
+#     def __init__(self, net, objective, loss_weight=None):
+#         super().__init__(net, objective)
+#         if loss_weight is None:
+#             loss_weight = {'rgb': 1.0}
+#         self.loss_weight = loss_weight
+
+#     def __call__(self, data, flow_array):
+#         # Run network
+#         pred, aux_dict = self.net(data['burst'])
+        
+#         plot = True
+#         if plot:
+#             plot_flow(data["flow"], -aux_dict["offsets"])
+#             # flow_array = np.vstack((flow_array, calc_flow(data["flow"], -aux_dict["offsets"])))
+
+#         # Compute loss
+#         loss_rgb_raw = self.objective['rgb'](pred, data['frame_gt'])
+#         loss_rgb = self.loss_weight['rgb'] * loss_rgb_raw
+
+#         if 'psnr' in self.objective.keys():
+#             psnr = self.objective['psnr'](pred.clone().detach(), data['frame_gt'])
+
+#         loss = loss_rgb
+
+#         stats = {'Loss/total': loss.item(),
+#                  'Loss/rgb': loss_rgb.item(),
+#                  'Loss/raw/rgb': loss_rgb_raw.item()}
+
+#         if 'psnr' in self.objective.keys():
+#             stats['Stat/psnr'] = psnr.item()
+
+#         return loss, stats, flow_array

@@ -79,7 +79,8 @@ class RandomImage(torch.utils.data.Dataset):
         frame, meta_info = dataset.get_image(im_id)
 
         data = TensorDict({'frame': frame,
-                           'dataset': dataset.get_name()})
+                           'dataset': dataset.get_name(),
+                           'filename': f"{im_id}.png"})
 
         return self.processing(data)
 
@@ -148,6 +149,7 @@ class IndexedBurst(torch.utils.data.Dataset):
 
         data = TensorDict({'frames': frames,
                            'gt': gt,
+                           'filename': f"{index}.png",
                            'dataset': dataset.get_name(),
                            'burst_name': meta_info['burst_name'],
                            'sig_shot' : meta_info.get('sig_shot', None),
@@ -172,6 +174,7 @@ class RandomBurst(torch.utils.data.Dataset):
                                      randomly sampled
         """
         self.datasets = datasets
+
         # Normalize
         p_total = sum(p_datasets)
         self.p_datasets = [x/p_total for x in p_datasets]
@@ -206,7 +209,7 @@ class RandomBurst(torch.utils.data.Dataset):
     def __getitem__(self, index):
         # Sample dataset
         dataset = random.choices(self.datasets, self.p_datasets)[0]
-        
+
         # Sample burst id
         burst_id = random.randint(0, dataset.get_num_bursts()-1)
 
@@ -217,12 +220,9 @@ class RandomBurst(torch.utils.data.Dataset):
 
         # Load selected burst images
         frames, gt, meta_info = dataset.get_burst(burst_id, im_ids, burst_info)
-        gt_visual, raw_shuffle = dataset.get_visual(burst_id)
 
         data = TensorDict({'frames': frames,
                            'gt': gt,
-                           'gt_vis': gt_visual,
-                           'raw_shuffle': raw_shuffle,
                            'dataset': dataset.get_name(),
                            'burst_name': meta_info['burst_name'],
                            'meta_info': meta_info})

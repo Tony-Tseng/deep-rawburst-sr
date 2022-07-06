@@ -77,6 +77,7 @@ def apply_smoothstep(image):
 
 def invert_smoothstep(image):
     """Approximately inverts a global tone mapping curve."""
+    # print("smooth: ", type(image))
     image = image.clamp(0.0, 1.0)
     return 0.5 - torch.sin(torch.asin(1.0 - 2.0 * image) / 3.0)
 

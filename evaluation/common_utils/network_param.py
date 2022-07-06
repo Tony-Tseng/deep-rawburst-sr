@@ -84,6 +84,7 @@ class NetworkParam:
 
         elif self.epoch is None:
             net, checkpoint_dict = load_network('{}/{}'.format(self.module, self.parameter), return_dict=True)
+            # net, checkpoint_dict = load_network('DBSR_results/dbsr_burstsr_default.pth', return_dict=True)
         else:
             net, checkpoint_dict = load_network('{}/{}'.format(self.module, self.parameter), checkpoint=self.epoch,
                                                 return_dict=True)

@@ -19,7 +19,7 @@ env_path = os.path.join(os.path.dirname(__file__), '../..')
 if env_path not in sys.path:
     sys.path.append(env_path)
 
-from dataset.burstsr_dataset import get_burstsr_val_set
+from dataset.burst_val import get_burstsr_val_set
 import torch
 
 from models.loss.image_quality_v2 import PSNR, SSIM, LPIPS

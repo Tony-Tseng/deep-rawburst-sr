@@ -59,30 +59,30 @@ class BaseTrainer:
         epoch = -1
         num_tries = 1
         for i in range(num_tries):
-            try:
-                # if load_latest:
-                #     self.load_checkpoint()
+            # try:
+            if load_latest:
+                self.load_checkpoint()
 
-                for epoch in range(self.epoch+1, max_epochs+1):
-                    self.epoch = epoch
+            for epoch in range(self.epoch+1, max_epochs+1):
+                self.epoch = epoch
 
-                    self.train_epoch()
+                self.train_epoch()
 
-                    if self.lr_scheduler is not None:
-                        self.lr_scheduler.step()
+                if self.lr_scheduler is not None:
+                    self.lr_scheduler.step()
 
-                    if self._checkpoint_dir:
-                        self.save_checkpoint()
-            except:
-                print('Training crashed at epoch {}'.format(epoch))
-                if fail_safe:
-                    self.epoch -= 1
-                    load_latest = True
-                    print('Traceback for the error!')
-                    print(traceback.format_exc())
-                    print('Restarting training from last epoch ...')
-                else:
-                    raise
+                if self._checkpoint_dir:
+                    self.save_checkpoint()
+            # except:
+            #     print('Training crashed at epoch {}'.format(epoch))
+            #     if fail_safe:
+            #         self.epoch -= 1
+            #         load_latest = True
+            #         print('Traceback for the error!')
+            #         print(traceback.format_exc())
+            #         print('Restarting training from last epoch ...')
+            #     else:
+            #         raise
 
         print('Finished training!')
 

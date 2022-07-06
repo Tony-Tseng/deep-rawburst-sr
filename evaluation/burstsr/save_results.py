@@ -19,7 +19,7 @@ env_path = os.path.join(os.path.dirname(__file__), '../..')
 if env_path not in sys.path:
     sys.path.append(env_path)
 
-from dataset.burstsr_dataset import get_burstsr_val_set
+from dataset.burst_val import get_burstsr_val_set
 import torch
 
 import argparse
@@ -29,10 +29,14 @@ import numpy as np
 import tqdm
 from admin.environment import env_settings
 
+from dataset.burstsr_dataset import CanonImage
 
 def save_results(setting_name):
     """ Saves network outputs on the BurstSR validation set. setting_name denotes the name of the experiment
         setting to be used. """
+        
+    # postprocess_fn = BurstSRPostProcess(return_np=True)
+    
     expr_module = importlib.import_module('evaluation.burstsr.experiments.{}'.format(setting_name))
     expr_func = getattr(expr_module, 'main')
     network_list = expr_func()
@@ -51,6 +55,8 @@ def save_results(setting_name):
 
         for idx in tqdm.tqdm(range(len(dataset))):
             data = dataset[idx]
+            meta_info_burst = data['meta_info_burst']
+            
             burst = data['burst'].unsqueeze(0)
             burst_name = data['burst_name']
 
@@ -62,11 +68,18 @@ def save_results(setting_name):
             with torch.no_grad():
                 net_pred, _ = net(burst)
 
-            net_pred_np = (net_pred.squeeze(0).permute(1, 2, 0).clamp(0.0, 1.0) * 2 ** 14).cpu().numpy().astype(
-                np.uint16)
+            # net_pred_np = (net_pred.squeeze(0).permute(1, 2, 0).clamp(0.0, 1.0) * 2 ** 14) #.cpu().numpy().astype(
+                #np.uint16)
+
+            pred_proc_np = CanonImage.generate_processed_image(net_pred[0].cpu(), meta_info_burst, return_np=True,
+                                                               gamma=True,
+                                                               smoothstep=True,
+                                                               no_white_balance=False,
+                                                               external_norm_factor=None)
+            pred_proc_np = cv2.cvtColor(pred_proc_np, cv2.COLOR_RGB2BGR)
 
             # Save predictions as png
-            cv2.imwrite('{}/{}.png'.format(out_dir, burst_name), net_pred_np)
+            cv2.imwrite('{}/{}.png'.format(out_dir, burst_name), pred_proc_np)
 
 
 if __name__ == '__main__':
