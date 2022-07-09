@@ -15,7 +15,8 @@
 import torch.optim as optim
 import dataset as datasets
 from data import processing, sampler, DataLoader
-import models.dbsr.dbsrnet as dbsr_nets
+# import models.dbsr.dbsrnet as dbsr_nets
+import models.DCN.dcnsr as dcnsr_net
 import actors.dbsr_actors as dbsr_actors
 from trainers import SimpleTrainer
 import data.transforms as tfm
@@ -25,7 +26,7 @@ from models.loss.image_quality_v2 import PSNR, PixelWiseError
 
 def run(settings):
     settings.description = 'Default settings for training DBSR models on synthetic burst dataset '
-    settings.batch_size = 16
+    settings.batch_size = 1
     settings.num_workers = 8
     settings.multi_gpu = False
     settings.print_interval = 1
@@ -70,16 +71,10 @@ def run(settings):
     loader_val = DataLoader('val', dataset_val, training=False, num_workers=settings.num_workers,
                             stack_dim=0, batch_size=settings.batch_size, epoch_interval=5)
 
-    net = dbsr_nets.dbsrnet_cvpr2021(enc_init_dim=64, enc_num_res_blocks=9, enc_out_dim=512,
-                                     dec_init_conv_dim=64, dec_num_pre_res_blocks=5,
-                                     dec_post_conv_dim=32, dec_num_post_res_blocks=4,
-                                     upsample_factor=settings.downsample_factor * 2,
-                                     offset_feat_dim=64,
-                                     weight_pred_proj_dim=64,
-                                     num_weight_predictor_res=3,
-                                     gauss_blur_sd=1.0,
-                                     icnrinit=True
-                                     )
+    net = dcnsr_net.dcnsrnet(alignment_init_dim=64, reduction=8, alignment_out_dim=64, 
+                             dec_init_conv_dim=64, dec_num_pre_res_blocks=5, dec_post_conv_dim=32, 
+                             dec_num_post_res_blocks=4, burst_size=settings.burst_sz, upsample_factor=settings.downsample_factor * 2, 
+                             icnrinit=True, gauss_blur_sd=1.0)
 
     # Wrap the network for multi GPU training
     if settings.multi_gpu:
@@ -89,7 +84,7 @@ def run(settings):
 
     loss_weight = {'rgb': 1.0}
 
-    actor = dbsr_actors.DBSRSyntheticActor(net=net, objective=objective, loss_weight=loss_weight)
+    actor = dbsr_actors.DCNSRSyntheticActor(net=net, objective=objective, loss_weight=loss_weight)
 
     optimizer = optim.Adam([{'params': actor.net.parameters(), 'lr': 1e-4}],
                            lr=2e-4)

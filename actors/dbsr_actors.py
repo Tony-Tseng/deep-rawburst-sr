@@ -46,6 +46,36 @@ class DBSRSyntheticActor(BaseActor):
 
         return loss, stats
 
+class DCNSRSyntheticActor(BaseActor):
+    """Actor for training DBSR model on synthetic bursts """
+    def __init__(self, net, objective, loss_weight=None):
+        super().__init__(net, objective)
+        if loss_weight is None:
+            loss_weight = {'rgb': 1.0}
+        self.loss_weight = loss_weight
+
+    def __call__(self, data):
+        # Run network
+        pred = self.net(data['burst'])
+
+        # Compute loss
+        loss_rgb_raw = self.objective['rgb'](pred, data['frame_gt'])
+        loss_rgb = self.loss_weight['rgb'] * loss_rgb_raw
+
+        if 'psnr' in self.objective.keys():
+            psnr = self.objective['psnr'](pred.clone().detach(), data['frame_gt'])
+
+        loss = loss_rgb
+
+        stats = {'Loss/total': loss.item(),
+                 'Loss/rgb': loss_rgb.item(),
+                 'Loss/raw/rgb': loss_rgb_raw.item()}
+
+        if 'psnr' in self.objective.keys():
+            stats['Stat/psnr'] = psnr.item()
+
+        return loss, stats
+
 
 class DBSRRealWorldActor(BaseActor):
     """Actor for training DBSR model on real-world bursts from BurstSR dataset"""
