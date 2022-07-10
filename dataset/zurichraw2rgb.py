@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import os
+import random, cv2
 import numpy as np
 from dataset.base_image_dataset import BaseImageDataset
 from data.image_loader import opencv_loader
@@ -66,8 +67,18 @@ class ZurichRAW2RGB(BaseImageDataset):
 
     def _get_image(self, im_id):
         path = os.path.join(self.img_pth, self.image_list[im_id])
-        img = self.image_loader(path)
+        img = cv2.imread(path)
+        if random.randint(0,1) == 1 and self.split=='train':
+            flag_aug = random.randint(1,7)
+            img = self.data_augmentation(img, flag_aug)
+        else:
+            img = img
         return img
+    
+    def __getitem__(self, index):
+        frame = self._get_image(index)
+
+        return frame
 
     def get_image(self, im_id, info=None):
         frame = self._get_image(im_id)
@@ -76,3 +87,49 @@ class ZurichRAW2RGB(BaseImageDataset):
             info = self.get_image_info(im_id)
 
         return frame, info
+
+    def data_augmentation(self, image, mode):
+        """
+        Performs data augmentation of the input image
+        Input:
+            image: a cv2 (OpenCV) image
+            mode: int. Choice of transformation to apply to the image
+                    0 - no transformation
+                    1 - flip up and down
+                    2 - rotate counterwise 90 degree
+                    3 - rotate 90 degree and flip up and down
+                    4 - rotate 180 degree
+                    5 - rotate 180 degree and flip
+                    6 - rotate 270 degree
+                    7 - rotate 270 degree and flip
+        """
+        if mode == 0:
+            # original
+            out = image
+        elif mode == 1:
+            # flip up and down
+            out = np.flipud(image)
+        elif mode == 2:
+            # rotate counterwise 90 degree
+            out = np.rot90(image)
+        elif mode == 3:
+            # rotate 90 degree and flip up and down
+            out = np.rot90(image)
+            out = np.flipud(out)
+        elif mode == 4:
+            # rotate 180 degree
+            out = np.rot90(image, k=2)
+        elif mode == 5:
+            # rotate 180 degree and flip
+            out = np.rot90(image, k=2)
+            out = np.flipud(out)
+        elif mode == 6:
+            # rotate 270 degree
+            out = np.rot90(image, k=3)
+        elif mode == 7:
+            # rotate 270 degree and flip
+            out = np.rot90(image, k=3)
+            out = np.flipud(out)
+        else:
+            raise Exception('Invalid choice of image transformation')
+        return out.copy()

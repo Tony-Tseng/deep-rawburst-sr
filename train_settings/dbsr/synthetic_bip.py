@@ -24,13 +24,16 @@ from admin.multigpu import *
 from models.loss.image_quality_v2 import PSNR, PixelWiseError
 import torch.nn as nn
 
+from dataset.synthetic_burst_train_set import SyntheticBurst
+# from data import DataLoader
+
 
 def run(settings):
     settings.description = 'Default settings for training DBSR models on synthetic burst dataset '
     settings.batch_size = 1
     settings.num_workers = 8
     settings.multi_gpu = False
-    settings.print_interval = 1
+    settings.print_interval = 1000
 
     settings.crop_sz = (384, 384)
     settings.burst_sz = 14
@@ -50,32 +53,32 @@ def run(settings):
     transform_train = tfm.Transform(tfm.ToTensorAndJitter(0.0, normalize=True), tfm.RandomHorizontalFlip())
     transform_val = tfm.Transform(tfm.ToTensorAndJitter(0.0, normalize=True), tfm.RandomHorizontalFlip())
 
-    data_processing_train = processing.SyntheticBurstProcessing(settings.crop_sz, settings.burst_sz,
-                                                                settings.downsample_factor,
-                                                                burst_transformation_params=settings.burst_transformation_params,
-                                                                transform=transform_train,
-                                                                image_processing_params=settings.image_processing_params)
-    data_processing_val = processing.SyntheticBurstProcessing(settings.crop_sz, settings.burst_sz,
-                                                              settings.downsample_factor,
-                                                              burst_transformation_params=settings.burst_transformation_params,
-                                                              transform=transform_val,
-                                                              image_processing_params=settings.image_processing_params)
+    # data_processing_train = processing.SyntheticBurstProcessing(settings.crop_sz, settings.burst_sz,
+    #                                                             settings.downsample_factor,
+    #                                                             burst_transformation_params=settings.burst_transformation_params,
+    #                                                             transform=transform_train,
+    #                                                             image_processing_params=settings.image_processing_params)
+    # data_processing_val = processing.SyntheticBurstProcessing(settings.crop_sz, settings.burst_sz,
+    #                                                           settings.downsample_factor,
+    #                                                           burst_transformation_params=settings.burst_transformation_params,
+    #                                                           transform=transform_val,
+    #                                                           image_processing_params=settings.image_processing_params)
 
-    # Train sampler and loader
-    dataset_train = sampler.RandomImage([zurich_raw2rgb_train], [1],
-                                        samples_per_epoch=settings.batch_size * 1000, processing=data_processing_train)
-    dataset_val = sampler.RandomImage([zurich_raw2rgb_val], [1],
-                                      samples_per_epoch=settings.batch_size * 200, processing=data_processing_val)
+    # # Train sampler and loader
+    # train_dataset = sampler.RandomImage([zurich_raw2rgb_train], [1],
+    #                                     samples_per_epoch=settings.batch_size * 25000, processing=data_processing_train)
+    # test_dataset = sampler.RandomImage([zurich_raw2rgb_val], [1],
+    #                                   samples_per_epoch=settings.batch_size * 200, processing=data_processing_val)
 
-    loader_train = DataLoader('train', dataset_train, training=True, num_workers=settings.num_workers,
+    train_dataset = SyntheticBurst(zurich_raw2rgb_train, burst_size=settings.burst_sz, crop_sz=384, transform=transform_train)    
+    test_dataset = SyntheticBurst(zurich_raw2rgb_val, burst_size=settings.burst_sz, crop_sz=384, transform=transform_val)
+
+    loader_train = DataLoader('train', train_dataset, training=True, num_workers=settings.num_workers,
                               stack_dim=0, batch_size=settings.batch_size)
-    loader_val = DataLoader('val', dataset_val, training=False, num_workers=settings.num_workers,
+    loader_val = DataLoader('val', test_dataset, training=False, num_workers=settings.num_workers,
                             stack_dim=0, batch_size=settings.batch_size, epoch_interval=5)
 
-    net = dcnsr_net.dcnsrnet(alignment_init_dim=64, reduction=8, alignment_out_dim=64, 
-                             dec_init_conv_dim=64, dec_num_pre_res_blocks=5, dec_post_conv_dim=32, 
-                             dec_num_post_res_blocks=4, burst_size=settings.burst_sz, upsample_factor=settings.downsample_factor * 2, 
-                             icnrinit=True, gauss_blur_sd=1.0)
+    net = dcnsr_net.bipnet(num_features=64, reduction=8, burst_size=settings.burst_sz)
 
     # Wrap the network for multi GPU training
     if settings.multi_gpu:
@@ -88,10 +91,13 @@ def run(settings):
 
     actor = dbsr_actors.DCNSRSyntheticActor(net=net, objective=objective, loss_weight=loss_weight)
 
-    optimizer = optim.Adam([{'params': actor.net.parameters(), 'lr': 1e-4}],
-                           lr=2e-4)
+    # optimizer = optim.Adam([{'params': actor.net.parameters(), 'lr': 1e-4}],
+    #                        lr=2e-4)
 
-    lr_scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=40, gamma=0.2)
+    # lr_scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=40, gamma=0.2)
+    optimizer = optim.AdamW(actor.net.parameters(), lr=1e-4)
+    lr_scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, 300, eta_min=1e-6)
+
     trainer = SimpleTrainer(actor, [loader_train, loader_val], optimizer, settings, lr_scheduler)
 
     trainer.train(100, load_latest=True, fail_safe=True)

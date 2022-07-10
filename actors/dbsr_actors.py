@@ -14,6 +14,7 @@
 
 from actors.base_actor import BaseActor
 from models.loss.spatial_color_alignment import SpatialColorAlignment
+import torch.nn as nn
 
 
 class DBSRSyntheticActor(BaseActor):
@@ -54,13 +55,14 @@ class DCNSRSyntheticActor(BaseActor):
             loss_weight = {'rgb': 1.0}
         self.loss_weight = loss_weight
 
+        self.train_loss = nn.L1Loss()
+
     def __call__(self, data):
         # Run network
         pred = self.net(data['burst'])
 
         # Compute loss
-        loss_rgb_raw = self.objective['rgb'](pred, data['frame_gt'])
-        loss_rgb = self.loss_weight['rgb'] * loss_rgb_raw
+        loss_rgb = self.train_loss(pred, data['frame_gt'])
 
         if 'psnr' in self.objective.keys():
             psnr = self.objective['psnr'](pred.clone().detach(), data['frame_gt'])
@@ -68,8 +70,7 @@ class DCNSRSyntheticActor(BaseActor):
         loss = loss_rgb
 
         stats = {'Loss/total': loss.item(),
-                 'Loss/rgb': loss_rgb.item(),
-                 'Loss/raw/rgb': loss_rgb_raw.item()}
+                 'Loss/rgb': loss_rgb.item()}
 
         if 'psnr' in self.objective.keys():
             stats['Stat/psnr'] = psnr.item()
