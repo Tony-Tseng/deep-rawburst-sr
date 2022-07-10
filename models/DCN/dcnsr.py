@@ -321,11 +321,13 @@ class DCNSRNet(nn.Module):
         self.decoder = decoder      # Decodes the merged embeddings to generate HR RGB image
 
     def forward(self, im):
+        print(im.shape)
         out_enc = self.alignment(im)
         out_fus = self.fusion(out_enc)
         # print(out_enc.shape)
-        # print(out_fus.shape)
+        print(out_fus.shape)
         out_dec = self.decoder(out_fus)
+        print(out_dec['pred'].shape)
 
         return out_dec['pred']
     
