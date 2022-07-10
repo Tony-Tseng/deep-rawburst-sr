@@ -162,7 +162,7 @@ class EBFA(nn.Module):
         # Input: (B, 4, H/2, W/2)    
         # Output: (1, 3, 4H, 4W)
         ###################
-            
+        
         burst = burst[0]
         burst_feat = self.conv1(burst)          # (B, num_features, H/2, W/2)
 
@@ -260,13 +260,87 @@ class PBFF(nn.Module):
         ##################################################
         ####### Pseudo Burst Feature Fusion ####################
         ##################################################
-        # burst_feat = burst_feat.permute(1,0,2,3).contiguous() 
-        # burst_feat = self.conv2(burst_feat)       # (num_features, num_features, H/2, W/2)      
+        burst_feat = burst_feat.permute(1,0,2,3).contiguous()
+        burst_feat = self.conv2(burst_feat)       # (num_features, num_features, H/2, W/2)      
 
         ## Multi-scale Feature Extraction
         burst_feat = self.UNet(burst_feat)        # (num_features, num_features, H/2, W/2)  
 
         return burst_feat
+
+##############################################################################################
+######################### Adaptive Group Up-sampling Module ##########################################
+##############################################################################################
+
+class UPSL(nn.Module):
+    def __init__(self, in_channels, height, reduction=8, bias=False):
+        super(UPSL, self).__init__()
+        
+        self.height = height
+        d = max(int(in_channels/reduction),4)
+        
+        self.conv_du = nn.Sequential(nn.Conv2d(in_channels, d, 1, padding=0, bias=bias), nn.LeakyReLU(negative_slope=0.2,inplace=True))
+
+        self.convs = nn.ModuleList([])
+        for i in range(self.height):
+            self.convs.append(nn.Conv2d(d, in_channels, kernel_size=1, stride=1,bias=bias))
+        
+        self.softmax = nn.Softmax(dim=1)
+        self.up = nn.ConvTranspose2d(in_channels*4, in_channels, 3, stride=2, padding=1, output_padding=1, bias=bias)
+
+    def forward(self, inp_feats):
+        batch_size, b, n_feats, H, W = inp_feats.size()
+        
+        feats_U = torch.sum(inp_feats, dim=1)
+        feats_Z = self.conv_du(feats_U)
+        
+        dense_attention = [conv(feats_Z) for conv in self.convs]
+        dense_attention = torch.cat(dense_attention, dim=1)
+        
+        dense_attention = dense_attention.view(batch_size, self.height, n_feats, H, W)
+        
+        dense_attention = self.softmax(dense_attention)
+        
+        feats_V = inp_feats*dense_attention
+        feats_V = feats_V.view(batch_size, -1, H, W)
+        feats_V = self.up(feats_V)
+        
+        return feats_V
+
+class AGU(nn.Module):
+    def __init__(self, num_features, height, reduction=8, bias=False):
+        super(AGU, self).__init__()
+
+        ####### Adaptive Group Up-sampling
+        self.SKFF1 = UPSL(num_features, height)
+        self.SKFF2 = UPSL(num_features, height)
+        self.SKFF3 = UPSL(num_features, height)
+
+        ## Output Convolution
+        self.conv3 = nn.Sequential(nn.Conv2d(num_features, 3, kernel_size=3, padding=1, bias=bias))
+    
+    def forward(self, burst_feat):
+        ##################################################
+        ####### Adaptive Group Up-sampling #####################
+        ##################################################
+
+        b, f, H, W = burst_feat.size()
+        burst_feat = burst_feat.view(b//4, 4, f, H, W)          # (num_features//4, 4, num_features, H/2, W/2)        
+        burst_feat = self.SKFF1(burst_feat)                     # (num_features//4, num_features, H, W)   
+        
+        b, f, H, W = burst_feat.size()
+        burst_feat = burst_feat.view(b//4, 4, f, H, W)          # (num_features//16, 4, num_features, H, W)  
+        burst_feat = self.SKFF2(burst_feat)                     # (num_features//16, num_features, 2H, 2W) 
+        
+        b, f, H, W = burst_feat.size()
+        burst_feat = burst_feat.view(b//4, 4, f, H, W)          # (1, 4, num_features, H, W)  
+        burst_feat = self.SKFF3(burst_feat)                     # (1, num_features, 4H, 4W) 
+        
+        ## Output Convolution
+        burst_feat = self.conv3(burst_feat)                     # (1, 3, 4H, 4W) 
+        
+        return burst_feat
+
 
 class ResPixShuffleConv(nn.Module):
     """ Decoder employing sub-pixel convolution for upsampling. Passes the input feature map first through a residual
@@ -308,11 +382,10 @@ class ResPixShuffleConv(nn.Module):
         out = self.upsample_layer(out)
 
         pred = self.predictor(self.post_res_layers(out))
-        out = {'pred': pred}
         return out
     
 class DCNSRNet(nn.Module):
-    """ Deep Burst Super-Resolution model"""
+    """ DCN model"""
     def __init__(self, alignment, fusion, decoder):
         super().__init__()
 
@@ -321,15 +394,29 @@ class DCNSRNet(nn.Module):
         self.decoder = decoder      # Decodes the merged embeddings to generate HR RGB image
 
     def forward(self, im):
-        print(im.shape)
         out_enc = self.alignment(im)
         out_fus = self.fusion(out_enc)
-        # print(out_enc.shape)
         print(out_fus.shape)
         out_dec = self.decoder(out_fus)
-        print(out_dec['pred'].shape)
+        print(out_dec.shape)
 
-        return out_dec['pred']
+        return out_dec
+
+class BIPNet(nn.Module):
+    """ BIP model"""
+    def __init__(self, EBFA, PBFF, AGU):
+        super().__init__()
+
+        self.EBFA = EBFA      # Encodes input images and performs alignment
+        self.PBFF = PBFF
+        self.AGU = AGU      # Decodes the merged embeddings to generate HR RGB image
+
+    def forward(self, im):
+        out_enc = self.EBFA(im)
+        out_fus = self.PBFF(out_enc)
+        out_dec = self.AGU(out_fus)
+
+        return out_dec
     
 @model_constructor
 def dcnsrnet(alignment_init_dim, reduction, alignment_out_dim, dec_init_conv_dim, 
@@ -348,4 +435,14 @@ def dcnsrnet(alignment_init_dim, reduction, alignment_out_dim, dec_init_conv_dim
     
     net = DCNSRNet(alignment=ebfa, fusion=pbff, decoder = decoder)
     
+    return net
+
+@model_constructor
+def bipnet(num_features, reduction, burst_size):
+    ebfa = EBFA(num_features=num_features, reduction=reduction)
+    pbff = PBFF(num_features=num_features, burst_size=burst_size)
+    agu = AGU(num_features=num_features, height=4)
+
+    net = BIPNet(EBFA=ebfa, PBFF=pbff, AGU=agu)
+
     return net

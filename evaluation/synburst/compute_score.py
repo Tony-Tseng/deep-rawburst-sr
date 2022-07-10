@@ -104,7 +104,7 @@ def compute_score(setting_name, load_saved=False):
                 net_pred = net_pred.unsqueeze(0)
             else:
                 with torch.no_grad():
-                    net_pred, _ = net(burst)
+                    net_pred = net(burst)
 
                 # Perform quantization to be consistent with evaluating on saved images
                 net_pred_int = (net_pred.clamp(0.0, 1.0) * 2 ** 14).short()
