@@ -59,7 +59,7 @@ class DCNSRSyntheticActor(BaseActor):
 
     def __call__(self, data):
         # Run network
-        pred = self.net(data['burst'])
+        pred, _ = self.net(data['burst'])
 
         # Compute loss
         loss_rgb = self.train_loss(pred, data['frame_gt'])

@@ -5,6 +5,7 @@ from torchvision.ops import DeformConv2d
 import models.layers.blocks as blocks
 from models.layers.upsampling import PixShuffleUpsampler
 from admin.model_constructor import model_constructor
+import torch.nn.functional as F
 
 ##############################################################################################
 ######################### Residual Global Context Attention Block ##########################################
@@ -251,7 +252,7 @@ class PBFF(nn.Module):
     def __init__(self, num_features, burst_size, bias=False):
         super().__init__()
         ####### Pseudo Burst Feature Fusion 
-        self.conv2 = nn.Sequential(nn.Conv2d(burst_size, num_features, kernel_size=3, padding=1, bias=bias))
+        self.conv2 = nn.Sequential(nn.Conv2d(num_features, num_features, kernel_size=3, padding=1, bias=bias))
         
         ## Multi-scale Feature Extraction
         self.UNet = nn.Sequential(MSF(num_features))
@@ -260,13 +261,45 @@ class PBFF(nn.Module):
         ##################################################
         ####### Pseudo Burst Feature Fusion ####################
         ##################################################
-        burst_feat = burst_feat.permute(1,0,2,3).contiguous()
-        burst_feat = self.conv2(burst_feat)       # (num_features, num_features, H/2, W/2)      
+        # burst_feat = burst_feat.permute(1,0,2,3).contiguous()
+        # burst_feat = self.conv2(burst_feat)       # (num_features, num_features, H/2, W/2)      
 
         ## Multi-scale Feature Extraction
-        burst_feat = self.UNet(burst_feat)        # (num_features, num_features, H/2, W/2)  
+        burst_feat = self.UNet(burst_feat)        # (num_features, num_features, H/2, W/2)
 
         return burst_feat
+
+
+class MergeBlock(nn.Module):
+    def __init__(self, input_dim, project_dim, num_weight_predictor_res=1, 
+                 use_bn=False, activation='relu'):
+        super().__init__()
+        
+        weight_predictor = []
+        weight_predictor.append(blocks.conv_block(input_dim, 2 * project_dim, 3,
+                                                  stride=1, padding=1, batch_norm=use_bn, activation=activation))
+
+        for _ in range(num_weight_predictor_res):
+            weight_predictor.append(blocks.ResBlock(2 * project_dim, 2 * project_dim, stride=1,
+                                                    batch_norm=use_bn, activation=activation))
+
+        weight_predictor.append(blocks.conv_block(2 * project_dim, input_dim, 3, stride=1, padding=1,
+                                                  batch_norm=use_bn,
+                                                  activation='none'))
+
+        self.weight_predictor = nn.Sequential(*weight_predictor)
+    
+    def forward(self, feat):
+        # base_feat_proj = feat.mean(dim=0, keepdim=True)
+        # feat_diff = feat - base_feat_proj
+        
+        weight = self.weight_predictor(feat)
+        weights_norm = F.softmax(weight, dim=1)
+        fused_feat = (feat * weights_norm).sum(dim=0)
+        
+        return fused_feat.unsqueeze(0)
+        
+        
 
 ##############################################################################################
 ######################### Adaptive Group Up-sampling Module ##########################################
@@ -382,7 +415,7 @@ class ResPixShuffleConv(nn.Module):
         out = self.upsample_layer(out)
 
         pred = self.predictor(self.post_res_layers(out))
-        return out
+        return pred
     
 class DCNSRNet(nn.Module):
     """ DCN model"""
@@ -396,18 +429,19 @@ class DCNSRNet(nn.Module):
     def forward(self, im):
         out_enc = self.alignment(im)
         out_fus = self.fusion(out_enc)
-        print(out_fus.shape)
         out_dec = self.decoder(out_fus)
-        print(out_dec.shape)
+        # print(out_enc.shape)
+        # print(out_fus.shape)
+        # print(out_dec.shape)
 
-        return out_dec
+        return out_dec, out_fus
 
 class BIPNet(nn.Module):
     """ BIP model"""
     def __init__(self, EBFA, PBFF, AGU):
         super().__init__()
 
-        self.EBFA = EBFA      # Encodes input images and performs alignment
+        self.EBFA = EBFA    # Encodes input images and performs alignment
         self.PBFF = PBFF
         self.AGU = AGU      # Decodes the merged embeddings to generate HR RGB image
 
@@ -426,7 +460,7 @@ def dcnsrnet(alignment_init_dim, reduction, alignment_out_dim, dec_init_conv_dim
              ):
     
     ebfa = EBFA(num_features=alignment_init_dim, reduction=reduction)
-    pbff = PBFF(num_features=alignment_init_dim, burst_size=burst_size)
+    pbff = MergeBlock(input_dim=64, project_dim=64)
     decoder = ResPixShuffleConv(alignment_out_dim, dec_init_conv_dim, dec_num_pre_res_blocks,
                                 dec_post_conv_dim, dec_num_post_res_blocks,
                                 upsample_factor=upsample_factor, activation=activation,

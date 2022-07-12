@@ -59,10 +59,7 @@ def save_results(setting_name):
                 burst = burst[:, :n.burst_sz]
 
             with torch.no_grad():
-                # print(burst.shape)
-                net_pred = net(burst)
-                # print(net_pred.shape)
-                # print(net_pred)
+                net_pred, _ = net(burst)
 
                 # Normalize to 0  2^14 range and convert to numpy array
                 net_pred_np = (net_pred.squeeze(0).permute(1, 2, 0).clamp(0.0, 1.0) * 2 ** 14).cpu().numpy().astype(

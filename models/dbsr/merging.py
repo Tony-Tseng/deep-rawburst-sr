@@ -69,22 +69,22 @@ class WeightedSum(nn.Module):
 
         shape = ref_feat.shape
 
-        all_feat = torch.cat((ref_feat, oth_feat), dim=1)
+        all_feat = torch.cat((ref_feat, oth_feat), dim=1) # [8, 8, 512, 48, 48]
 
         # Project the input embeddings to a lower dimension
-        all_feat_proj = self.feat_project_layer(all_feat.view(-1, *all_feat.shape[-3:])).view(*all_feat.shape[:2], -1, *all_feat.shape[-2:])
+        all_feat_proj = self.feat_project_layer(all_feat.view(-1, *all_feat.shape[-3:])).view(*all_feat.shape[:2], -1, *all_feat.shape[-2:]) # [8, 8, 64, 48, 48]
 
         # Select the base embeddings which is either the embeddings of the reference (first) image, or the mean
         # embedding over all images
         if getattr(self, 'use_base_frame', False):
             base_feat_proj = all_feat_proj[:, :1].contiguous()
         else:
-            base_feat_proj = all_feat_proj.mean(dim=1, keepdim=True)
+            base_feat_proj = all_feat_proj.mean(dim=1, keepdim=True) # [8, 1, 64, 48, 48]
 
         # Compute the residual between the base embeddings and other embeddings
-        feat_diff_proj = all_feat_proj - base_feat_proj
-        feat_diff_proj = feat_diff_proj.view(-1, *feat_diff_proj.shape[-3:])
-        base_feat_proj = base_feat_proj.expand(-1, all_feat.shape[1], -1, -1, -1).contiguous().view(-1, *base_feat_proj.shape[-3:])
+        feat_diff_proj = all_feat_proj - base_feat_proj # [8, 8, 64, 48, 48]
+        feat_diff_proj = feat_diff_proj.view(-1, *feat_diff_proj.shape[-3:]) # [64, 64, 48, 48]
+        base_feat_proj = base_feat_proj.expand(-1, all_feat.shape[1], -1, -1, -1).contiguous().view(-1, *base_feat_proj.shape[-3:]) # [64, 64, 48, 48]
 
         weight_pred_in = [base_feat_proj, feat_diff_proj]
 
@@ -107,11 +107,11 @@ class WeightedSum(nn.Module):
             offsets_feat = self.offset_feat_extractor(offsets_all)
             weight_pred_in.append(offsets_feat)
 
-        weight_pred_in = torch.cat(weight_pred_in, dim=1)
+        weight_pred_in = torch.cat(weight_pred_in, dim=1) # [64, 192, 48, 48]
 
         # Compute attention weights
-        weights = self.weight_predictor(weight_pred_in)
-        weights = weights.view(shape[0], -1, *weights.shape[-3:])
+        weights = self.weight_predictor(weight_pred_in) # [64, 512, 48, 48]
+        weights = weights.view(shape[0], -1, *weights.shape[-3:]) # [8, 8, 512, 48, 48]
 
         # Normalize the weights
         if self.softmax:
@@ -122,6 +122,9 @@ class WeightedSum(nn.Module):
 
         # Perform fusion
         fused_feat = (all_feat * weights_norm).sum(dim=1)
+        # print(all_feat.shape)
+        # print(weights_norm.shape)
+        # print(fused_feat.shape)
 
         out = {'fused_enc': fused_feat, 'fusion_weights': weights_norm}
         return out

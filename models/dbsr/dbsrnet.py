@@ -31,7 +31,9 @@ class DBSRNet(nn.Module):
         self.decoder = decoder      # Decodes the merged embeddings to generate HR RGB image
 
     def forward(self, im):
+        # print(im.shape)
         out_enc = self.encoder(im)
+        # print(out_enc.keys())
         out_merge = self.merging(out_enc)
         out_dec = self.decoder(out_merge)
 
