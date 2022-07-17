@@ -12,6 +12,7 @@ if env_path not in sys.path:
 
 import admin.settings as ws_settings
 
+# torch.backends.cudnn.benchmark = False
 
 def run_training(train_module, train_name, cudnn_benchmark=True):
     """Run a train scripts in train_settings.

@@ -1,0 +1,19 @@
+# ninja log v5
+1	4986	1657894989713681597	/tmp2/tonytseng/deep-rawburst-sr/DCNv2/build/temp.linux-x86_64-3.8/tmp2/tonytseng/deep-rawburst-sr/DCNv2/src/cpu/dcn_v2_im2col_cpu.o	3326ffbff6bd35b3
+0	6026	1657894990753713722	/tmp2/tonytseng/deep-rawburst-sr/DCNv2/build/temp.linux-x86_64-3.8/tmp2/tonytseng/deep-rawburst-sr/DCNv2/src/cpu/dcn_v2_cpu.o	561affa0ec39fb81
+1	6156	1657894990881717676	/tmp2/tonytseng/deep-rawburst-sr/DCNv2/build/temp.linux-x86_64-3.8/tmp2/tonytseng/deep-rawburst-sr/DCNv2/src/cpu/dcn_v2_psroi_pooling_cpu.o	1896ac4a8a1657d0
+2	23141	1657895007862242265	/tmp2/tonytseng/deep-rawburst-sr/DCNv2/build/temp.linux-x86_64-3.8/tmp2/tonytseng/deep-rawburst-sr/DCNv2/src/vision.o	48b95e593c7c34f2
+139	4576	1657895024750764160	/tmp2/tonytseng/deep-rawburst-sr/DCNv2/build/temp.linux-x86_64-3.8/tmp2/tonytseng/deep-rawburst-sr/DCNv2/src/cpu/dcn_v2_im2col_cpu.o	2d45be750230f4ac
+140	5542	1657895025714793955	/tmp2/tonytseng/deep-rawburst-sr/DCNv2/build/temp.linux-x86_64-3.8/tmp2/tonytseng/deep-rawburst-sr/DCNv2/src/cpu/dcn_v2_psroi_pooling_cpu.o	c4f8dc8379a5fb02
+139	5783	1657895025954801373	/tmp2/tonytseng/deep-rawburst-sr/DCNv2/build/temp.linux-x86_64-3.8/tmp2/tonytseng/deep-rawburst-sr/DCNv2/src/cpu/dcn_v2_cpu.o	c993ec0f9462c0a1
+140	15798	1657895035967110852	/tmp2/tonytseng/deep-rawburst-sr/DCNv2/build/temp.linux-x86_64-3.8/tmp2/tonytseng/deep-rawburst-sr/DCNv2/src/cuda/dcn_v2_cuda.o	73faab50ad365b3b
+141	16145	1657895036315121609	/tmp2/tonytseng/deep-rawburst-sr/DCNv2/build/temp.linux-x86_64-3.8/tmp2/tonytseng/deep-rawburst-sr/DCNv2/src/cuda/dcn_v2_im2col_cuda.o	ecb8594fd70e3bca
+141	16153	1657895036319121733	/tmp2/tonytseng/deep-rawburst-sr/DCNv2/build/temp.linux-x86_64-3.8/tmp2/tonytseng/deep-rawburst-sr/DCNv2/src/cuda/dcn_v2_psroi_pooling_cuda.o	a05235af1ed37120
+141	23876	1657895044043360522	/tmp2/tonytseng/deep-rawburst-sr/DCNv2/build/temp.linux-x86_64-3.8/tmp2/tonytseng/deep-rawburst-sr/DCNv2/src/vision.o	4f142c04428c65bc
+14	4301	1657895050407557288	/tmp2/tonytseng/deep-rawburst-sr/DCNv2/build/temp.linux-x86_64-3.8/tmp2/tonytseng/deep-rawburst-sr/DCNv2/src/cpu/dcn_v2_im2col_cpu.o	112be2a3f0ecf80f
+14	5170	1657895051275584127	/tmp2/tonytseng/deep-rawburst-sr/DCNv2/build/temp.linux-x86_64-3.8/tmp2/tonytseng/deep-rawburst-sr/DCNv2/src/cpu/dcn_v2_cpu.o	b6a9494c128a3d45
+15	5767	1657895051871602557	/tmp2/tonytseng/deep-rawburst-sr/DCNv2/build/temp.linux-x86_64-3.8/tmp2/tonytseng/deep-rawburst-sr/DCNv2/src/cpu/dcn_v2_psroi_pooling_cpu.o	199fabf62b67dc3c
+16	13698	1657895059799847712	/tmp2/tonytseng/deep-rawburst-sr/DCNv2/build/temp.linux-x86_64-3.8/tmp2/tonytseng/deep-rawburst-sr/DCNv2/src/cuda/dcn_v2_im2col_cuda.o	db90615acfc7252
+16	13827	1657895059927851670	/tmp2/tonytseng/deep-rawburst-sr/DCNv2/build/temp.linux-x86_64-3.8/tmp2/tonytseng/deep-rawburst-sr/DCNv2/src/cuda/dcn_v2_psroi_pooling_cuda.o	daf0de947ed15459
+15	15784	1657895061883912159	/tmp2/tonytseng/deep-rawburst-sr/DCNv2/build/temp.linux-x86_64-3.8/tmp2/tonytseng/deep-rawburst-sr/DCNv2/src/cuda/dcn_v2_cuda.o	1caaa1f0d779f181
+16	22746	1657895068844127413	/tmp2/tonytseng/deep-rawburst-sr/DCNv2/build/temp.linux-x86_64-3.8/tmp2/tonytseng/deep-rawburst-sr/DCNv2/src/vision.o	1689ad9e7ca1d64b

@@ -61,7 +61,7 @@ def run(settings):
 
     # Train sampler and loader
     dataset_train = sampler.RandomImage([zurich_raw2rgb_train], [1],
-                                        samples_per_epoch=settings.batch_size * 1000, processing=data_processing_train)
+                                        samples_per_epoch=settings.batch_size * 40000, processing=data_processing_train)
     dataset_val = sampler.RandomImage([zurich_raw2rgb_val], [1],
                                       samples_per_epoch=settings.batch_size * 200, processing=data_processing_val)
 

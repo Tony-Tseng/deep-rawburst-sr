@@ -90,7 +90,7 @@ class GCA(nn.Module):
         x = x + channel_add_term
 
         return x
-    
+
 class EBFA(nn.Module):
     """ Deformable Convolution Super-Resolution """
     def __init__(self, num_features=64, reduction=8, bias=False):
@@ -298,8 +298,75 @@ class MergeBlock(nn.Module):
         fused_feat = (feat * weights_norm).sum(dim=0)
         
         return fused_feat.unsqueeze(0)
+
+
+class MergeBlockDiff(nn.Module):
+    def __init__(self, input_dim, project_dim, num_weight_predictor_res=1, 
+                 use_bn=False, activation='relu'):
+        super().__init__()
         
+        weight_predictor = []
+        weight_predictor.append(blocks.conv_block(input_dim, 2 * project_dim, 3,
+                                                  stride=1, padding=1, batch_norm=use_bn, activation=activation))
+
+        for _ in range(num_weight_predictor_res):
+            weight_predictor.append(blocks.ResBlock(2 * project_dim, 2 * project_dim, stride=1,
+                                                    batch_norm=use_bn, activation=activation))
+
+        weight_predictor.append(blocks.conv_block(2 * project_dim, input_dim, 3, stride=1, padding=1,
+                                                  batch_norm=use_bn,
+                                                  activation='none'))
+
+        self.weight_predictor = nn.Sequential(*weight_predictor)
+    
+    def forward(self, feat):
+        base_feat_proj = feat.mean(dim=0, keepdim=True)
+        feat_diff = feat - base_feat_proj
         
+        weight = self.weight_predictor(feat)
+        # To-do: Modify dim=1 to dim=0
+        weights_norm = F.softmax(weight, dim=1)
+        fused_feat = (feat * weights_norm).sum(dim=0)
+        
+        return fused_feat.unsqueeze(0)
+
+
+class MergeBlockUNetDiff(nn.Module):
+    def __init__(self, num_features, input_dim, project_dim, 
+                 num_weight_predictor_res=1, use_bn=False, bias=False, 
+                 activation='relu'):
+        super().__init__()
+        
+        weight_predictor = []
+        weight_predictor.append(blocks.conv_block(input_dim, 2 * project_dim, 3,
+                                                  stride=1, padding=1, batch_norm=use_bn, activation=activation))
+
+        for _ in range(num_weight_predictor_res):
+            weight_predictor.append(blocks.ResBlock(2 * project_dim, 2 * project_dim, stride=1,
+                                                    batch_norm=use_bn, activation=activation))
+
+        weight_predictor.append(blocks.conv_block(2 * project_dim, input_dim, 3, stride=1, padding=1,
+                                                  batch_norm=use_bn,
+                                                  activation='none'))
+
+        self.weight_predictor = nn.Sequential(*weight_predictor)
+
+        self.conv2 = nn.Sequential(nn.Conv2d(num_features, num_features, kernel_size=3, padding=1, bias=bias))
+        self.UNet = nn.Sequential(MSF(num_features))
+    
+    def forward(self, feat):
+        burst_feat = self.conv2(feat)       # (14, num_features, H/2, W/2)
+        burst_feat = self.UNet(burst_feat)
+
+        base_feat_proj = burst_feat.mean(dim=0, keepdim=True)
+        feat_diff = feat - base_feat_proj
+        
+        weight = self.weight_predictor(feat)
+        weights_norm = F.softmax(weight, dim=1)
+        fused_feat = (feat * weights_norm).sum(dim=0)
+        
+        return fused_feat.unsqueeze(0)
+
 
 ##############################################################################################
 ######################### Adaptive Group Up-sampling Module ##########################################
@@ -339,6 +406,7 @@ class UPSL(nn.Module):
         feats_V = self.up(feats_V)
         
         return feats_V
+
 
 class AGU(nn.Module):
     def __init__(self, num_features, height, reduction=8, bias=False):
@@ -419,10 +487,29 @@ class ResPixShuffleConv(nn.Module):
     
 class DCNSRNet(nn.Module):
     """ DCN model"""
-    def __init__(self, alignment, fusion, decoder):
+    def __init__(self, alignment, extractor, fusion, decoder):
         super().__init__()
 
         self.alignment = alignment      # Encodes input images and performs alignment
+        self.extractor = extractor
+        self.fusion = fusion
+        self.decoder = decoder      # Decodes the merged embeddings to generate HR RGB image
+
+    def forward(self, im):
+        out_enc = self.alignment(im)
+        out_ext = self.extractor(out_enc)
+        out_fus = self.fusion(out_ext)
+        out_dec = self.decoder(out_fus)
+
+        return out_dec, out_fus
+
+
+class DCNSRNetNoUnet(nn.Module):
+    """ DCN model"""
+    def __init__(self, alignment, fusion, decoder):
+        super().__init__()
+
+        self.alignment = alignment  # Encodes input images and performs alignment
         self.fusion = fusion
         self.decoder = decoder      # Decodes the merged embeddings to generate HR RGB image
 
@@ -430,11 +517,9 @@ class DCNSRNet(nn.Module):
         out_enc = self.alignment(im)
         out_fus = self.fusion(out_enc)
         out_dec = self.decoder(out_fus)
-        # print(out_enc.shape)
-        # print(out_fus.shape)
-        # print(out_dec.shape)
 
         return out_dec, out_fus
+
 
 class BIPNet(nn.Module):
     """ BIP model"""
@@ -451,7 +536,7 @@ class BIPNet(nn.Module):
         out_dec = self.AGU(out_fus)
 
         return out_dec
-    
+
 @model_constructor
 def dcnsrnet(alignment_init_dim, reduction, alignment_out_dim, dec_init_conv_dim, 
              dec_num_pre_res_blocks, dec_post_conv_dim, dec_num_post_res_blocks,
@@ -460,16 +545,57 @@ def dcnsrnet(alignment_init_dim, reduction, alignment_out_dim, dec_init_conv_dim
              ):
     
     ebfa = EBFA(num_features=alignment_init_dim, reduction=reduction)
-    pbff = MergeBlock(input_dim=64, project_dim=64)
+    extractor = PBFF(num_features=alignment_init_dim, burst_size=burst_size)
+    fusion = MergeBlock(input_dim=64, project_dim=64)
     decoder = ResPixShuffleConv(alignment_out_dim, dec_init_conv_dim, dec_num_pre_res_blocks,
                                 dec_post_conv_dim, dec_num_post_res_blocks,
                                 upsample_factor=upsample_factor, activation=activation,
                                 gauss_blur_sd=gauss_blur_sd, icnrinit=icnrinit,
                                 gauss_ksz=gauss_ksz)
     
-    net = DCNSRNet(alignment=ebfa, fusion=pbff, decoder = decoder)
+    net = DCNSRNet(alignment=ebfa, extractor=extractor, fusion=fusion, decoder = decoder)
     
     return net
+
+@model_constructor
+def dcnsrnet_mergediff(alignment_init_dim, reduction, alignment_out_dim, dec_init_conv_dim, 
+             dec_num_pre_res_blocks, dec_post_conv_dim, dec_num_post_res_blocks,
+             burst_size, upsample_factor=2, activation='relu', icnrinit=False,
+             gauss_blur_sd=None, gauss_ksz=3, 
+             ):
+    
+    ebfa = EBFA(num_features=alignment_init_dim, reduction=reduction)
+    fusion = MergeBlockDiff(input_dim=64, project_dim=64)
+    decoder = ResPixShuffleConv(alignment_out_dim, dec_init_conv_dim, dec_num_pre_res_blocks,
+                                dec_post_conv_dim, dec_num_post_res_blocks,
+                                upsample_factor=upsample_factor, activation=activation,
+                                gauss_blur_sd=gauss_blur_sd, icnrinit=icnrinit,
+                                gauss_ksz=gauss_ksz)
+    
+    net = DCNSRNetNoUnet(alignment=ebfa, fusion=fusion, decoder = decoder)
+    
+    return net
+
+
+@model_constructor
+def dcnsrnet_unet_mergediff(alignment_init_dim, reduction, alignment_out_dim, dec_init_conv_dim, 
+             dec_num_pre_res_blocks, dec_post_conv_dim, dec_num_post_res_blocks,
+             burst_size, upsample_factor=2, activation='relu', icnrinit=False,
+             gauss_blur_sd=None, gauss_ksz=3, 
+             ):
+    
+    ebfa = EBFA(num_features=alignment_init_dim, reduction=reduction)
+    fusion = MergeBlockUNetDiff(num_features=alignment_init_dim, input_dim=64, project_dim=64)
+    decoder = ResPixShuffleConv(alignment_out_dim, dec_init_conv_dim, dec_num_pre_res_blocks,
+                                dec_post_conv_dim, dec_num_post_res_blocks,
+                                upsample_factor=upsample_factor, activation=activation,
+                                gauss_blur_sd=gauss_blur_sd, icnrinit=icnrinit,
+                                gauss_ksz=gauss_ksz)
+    
+    net = DCNSRNetNoUnet(alignment=ebfa, fusion=fusion, decoder = decoder)
+    
+    return net
+
 
 @model_constructor
 def bipnet(num_features, reduction, burst_size):
