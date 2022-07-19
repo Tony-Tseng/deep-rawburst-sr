@@ -26,6 +26,8 @@ import torch.nn as nn
 
 from dataset.synthetic_burst_train_set import SyntheticBurst
 
+def count_parameters(model):
+    return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
 def run(settings):
     settings.description = 'Default settings for training DBSR models on synthetic burst dataset '

@@ -251,8 +251,9 @@ class MSF(nn.Module):
 class PBFF(nn.Module):
     def __init__(self, num_features, burst_size, bias=False):
         super().__init__()
-        ####### Pseudo Burst Feature Fusion 
+        ####### Pseudo Burst Feature Fusion
         self.conv2 = nn.Sequential(nn.Conv2d(num_features, num_features, kernel_size=3, padding=1, bias=bias))
+        # self.conv2 = nn.Sequential(nn.Conv2d(14, num_features, kernel_size=3, padding=1, bias=bias)) # my_bip
         
         ## Multi-scale Feature Extraction
         self.UNet = nn.Sequential(MSF(num_features))

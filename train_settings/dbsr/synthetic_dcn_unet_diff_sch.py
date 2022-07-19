@@ -26,6 +26,8 @@ import torch.nn as nn
 
 from dataset.synthetic_burst_train_set import SyntheticBurst
 
+def count_parameters(model):
+    return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
 def run(settings):
     settings.description = 'Default settings for training DBSR models on synthetic burst dataset '
@@ -81,6 +83,9 @@ def run(settings):
                              dec_init_conv_dim=64, dec_num_pre_res_blocks=5, dec_post_conv_dim=32, 
                              dec_num_post_res_blocks=4, burst_size=settings.burst_sz, upsample_factor=settings.downsample_factor * 2, 
                              icnrinit=True, gauss_blur_sd=1.0)
+
+    total_param = count_parameters(net)
+    print("The total Net parameter is ", total_param)
 
     # Wrap the network for multi GPU training
     if settings.multi_gpu:
