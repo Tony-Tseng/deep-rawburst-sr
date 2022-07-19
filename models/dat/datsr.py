@@ -29,17 +29,15 @@ class MergeBlockDiff(nn.Module):
         self.weight_predictor = nn.Sequential(*weight_predictor)
     
     def forward(self, feat):
-        base_feat_proj = feat.mean(dim=1, keepdim=True)
+        base_feat_proj = feat.mean(dim=0, keepdim=True)
         feat_diff = feat - base_feat_proj
-
-        weight = torch.zeros_like(feat_diff)
         
-        for i in range(feat_diff.shape[1]):
-            weight[:, i, ...] = self.weight_predictor(feat[:, i, ...])
-        weights_norm = F.softmax(weight, dim=1)
-        fused_feat = (feat * weights_norm).sum(dim=1)
+        weight = self.weight_predictor(feat)
+        # To-do: Modify dim=1 to dim=0
+        weights_norm = F.softmax(weight, dim=0)
+        fused_feat = (feat * weights_norm).sum(dim=0)
         
-        return fused_feat
+        return fused_feat.unsqueeze(0)
 
         
 class ResPixShuffleConv(nn.Module):
