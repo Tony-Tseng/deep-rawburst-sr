@@ -93,10 +93,13 @@ def run(settings):
 
     actor = dbsr_actors.DCNSRSyntheticActor(net=net, objective=objective, loss_weight=loss_weight)
 
-    optimizer = optim.Adam([{'params': actor.net.parameters(), 'lr': 1e-4}],
-                           lr=2e-4)
+    # optimizer = optim.Adam([{'params': actor.net.parameters(), 'lr': 1e-4}],
+    #                        lr=2e-4)
 
-    lr_scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=40, gamma=0.2)
+    # lr_scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=40, gamma=0.2)
+    optimizer = optim.AdamW(actor.net.parameters(), lr=1e-4)
+    lr_scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, 300, eta_min=1e-6)
+    
     trainer = SimpleTrainer(actor, [loader_train, loader_val], optimizer, settings, lr_scheduler)
 
     trainer.train(150, load_latest=True, fail_safe=True)

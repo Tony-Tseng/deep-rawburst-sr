@@ -232,19 +232,19 @@ class MSF(nn.Module):
         
     def forward(self, x):
         
-        x = self.feat_ext1(x)
+        x = self.feat_ext1(x) # torch.Size([14, 64, 48, 48])
         
         enc_1 = self.down1(x)
-        enc_1 = self.feat_ext2(enc_1)
+        enc_1 = self.feat_ext2(enc_1) # torch.Size([14, 96, 24, 24])
         
         enc_2 = self.down2(enc_1)
-        enc_2 = self.feat_ext3(enc_2)
+        enc_2 = self.feat_ext3(enc_2) # torch.Size([14, 144, 12, 12])
         
         dec_2 = self.up2(enc_2)
-        dec_2 = self.feat_ext5(dec_2 + enc_1)
+        dec_2 = self.feat_ext5(dec_2 + enc_1) # torch.Size([14, 96, 24, 24])
         
         dec_1 = self.up1(dec_2)
-        dec_2 = self.feat_ext6(dec_1 + x)
+        dec_2 = self.feat_ext6(dec_1 + x) # torch.Size([14, 64, 48, 48])
         
         return dec_2
 
@@ -362,7 +362,8 @@ class MergeBlockUNetDiff(nn.Module):
         feat_diff = feat - base_feat_proj
         
         weight = self.weight_predictor(feat)
-        weights_norm = F.softmax(weight, dim=1)
+        # weights_norm = F.softmax(weight, dim=1)
+        weights_norm = F.softmax(weight, dim=0)
         fused_feat = (feat * weights_norm).sum(dim=0)
         
         return fused_feat.unsqueeze(0)
@@ -495,11 +496,11 @@ class DCNSRNet(nn.Module):
         self.fusion = fusion
         self.decoder = decoder      # Decodes the merged embeddings to generate HR RGB image
 
-    def forward(self, im):
-        out_enc = self.alignment(im)
-        out_ext = self.extractor(out_enc)
-        out_fus = self.fusion(out_ext)
-        out_dec = self.decoder(out_fus)
+    def forward(self, im):  #im: torch.Size([1, 14, 4, 48, 48])
+        out_enc = self.alignment(im) #torch.Size([14, 64, 48, 48])
+        out_ext = self.extractor(out_enc) #torch.Size([14, 64, 48, 48])
+        out_fus = self.fusion(out_ext) #torch.Size([1, 64, 48, 48])
+        out_dec = self.decoder(out_fus) #torch.Size([1, 3, 384, 384])
 
         return out_dec, out_fus
 
