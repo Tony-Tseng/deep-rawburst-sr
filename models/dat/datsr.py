@@ -93,10 +93,9 @@ class DATSRNet(nn.Module):
         self.decoder = decoder
 
     def forward(self, im):
-        out_enc = self.alignment(im) # [1 14 4 48 48]
-        print(out_enc.shape)
-        out_attn = self.attention(out_enc)
-        out_fus = self.fusion(out_attn)
+        out_attn = self.attention(im[0]) # [1 14 4 48 48]
+        out_enc = self.alignment(out_attn.unsqueeze(0))
+        out_fus = self.fusion(out_enc)
         out_dec = self.decoder(out_fus)
 
         return out_dec, out_fus
@@ -112,13 +111,13 @@ def datsrnet(alignment_init_dim, reduction, alignment_out_dim, dec_init_conv_dim
     ebfa = EBFA(num_features=alignment_init_dim, reduction=reduction)
 
     attention = DeformableAttention(
-        dim = 64,                   # feature dimensions
+        dim = 4,                   # feature dimensions
         dim_head = 64,              # dimension per head
         heads = 8,                  # attention heads
         dropout = 0.,               # dropout
         downsample_factor = 4,      # downsample factor (r in paper)
         offset_scale = 4,           # scale of offset, maximum offset
-        offset_groups = None,       # number of offset groups, should be multiple of heads
+        offset_groups = 1,          # number of offset groups, should be multiple of heads
         offset_kernel_size = 6,     # offset kernel size
     )
     fusion = MergeBlockDiff(input_dim=64, project_dim=64)

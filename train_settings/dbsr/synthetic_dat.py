@@ -33,7 +33,7 @@ def run(settings):
     settings.batch_size = 1
     settings.num_workers = 8
     settings.multi_gpu = False
-    settings.print_interval = 1
+    settings.print_interval = 1000
 
     settings.crop_sz = (384, 384)
     settings.burst_sz = 14
