@@ -82,6 +82,7 @@ class PSNR(nn.Module):
 
         if torch.isinf(psnr) or torch.isnan(psnr):
             print('invalid psnr')
+            return torch.tensor([0]).cuda()
 
         return psnr
 

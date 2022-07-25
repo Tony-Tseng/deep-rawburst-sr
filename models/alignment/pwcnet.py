@@ -249,7 +249,9 @@ class PWCNet(torch.nn.Module):
         assert (source_img.shape[-1] == target_img.shape[-1])
         assert (source_img.shape[-2] == target_img.shape[-2])
 
-        B, N, C, int_height, int_width = source_img.shape
+        # B, N, C, int_height, int_width = source_img.shape
+        int_width = source_img.shape[-1]
+        int_height = source_img.shape[-2]
 
         source_img = source_img.view(-1, 3, int_height, int_width)
         target_img = target_img.view(-1, 3, int_height, int_width)
@@ -277,6 +279,6 @@ class PWCNet(torch.nn.Module):
         scale_factor_y = float(int_height) / float(int_preprocessed_height)
 
         flow = torch.stack((flow[:, 0] * scale_factor_x, flow[:, 1] * scale_factor_y), dim=1)
-        flow = flow.view(B, N, *flow.shape[-3:])
+        # flow = flow.view(B, N, *flow.shape[-3:])
 
         return flow

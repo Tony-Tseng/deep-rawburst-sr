@@ -82,19 +82,86 @@ class ResPixShuffleConv(nn.Module):
         pred = self.predictor(self.post_res_layers(out))
         return pred
 
+class DAttention(nn.Module):
+    def __init__(self, dim, dim_head, heads, dropout, 
+                 downsample_factor, offset_scale, 
+                 offset_groups, offset_kernel_size):
+        super().__init__()
+
+        self.Deform_attention1 = DeformableAttention(
+            dim = dim*2, dim_head = dim_head, heads = heads, dropout = dropout, 
+            downsample_factor = downsample_factor, offset_scale = offset_scale, 
+            offset_groups = offset_groups, offset_kernel_size = offset_kernel_size
+        )
+        self.conv_block1 = nn.Sequential(
+            nn.Conv2d(dim, dim*2, 3, padding=1),
+            nn.BatchNorm2d(dim*2),
+            nn.GELU(),
+        )
+        # self.conv_block2 = nn.Sequential(
+        #     nn.Conv2d(dim*2, dim*2, 3, padding=1),
+        #     nn.BatchNorm2d(dim*2),
+        #     nn.GELU(),
+        # )
+        self.conv2 = nn.Conv2d(dim*2, dim, 3, padding=1)
+
+    def forward(self, im):
+        im = im[0]
+        feat = self.conv_block1(im)
+        attn_feat = self.Deform_attention1(feat)
+        # attn_feat = self.conv_block2(attn_feat)
+        # attn_feat = self.Deform_attention1(attn_feat)
+        attn_feat = self.conv2(attn_feat)
+
+        return attn_feat.unsqueeze(0)
+
+
+class DAttentionv2(nn.Module):
+    def __init__(self, dim, dim_head, heads, dropout, 
+                 downsample_factor, offset_scale, 
+                 offset_groups, offset_kernel_size):
+        super().__init__()
+
+        self.Deform_attention1 = DeformableAttention(
+            dim = dim*2, dim_head = dim_head, heads = heads, dropout = dropout, 
+            downsample_factor = downsample_factor, offset_scale = offset_scale, 
+            offset_groups = offset_groups, offset_kernel_size = offset_kernel_size
+        )
+        self.conv_block1 = nn.Sequential(
+            nn.Conv2d(dim, dim*2, 3, padding=1),
+            nn.BatchNorm2d(dim*2),
+            nn.GELU(),
+        )
+        self.conv_block2 = nn.Sequential(
+            nn.Conv2d(dim*2, dim*2, 3, padding=1),
+            nn.BatchNorm2d(dim*2),
+            nn.GELU(),
+        )
+        self.conv2 = nn.Conv2d(dim*2, dim, 3, padding=1)
+
+    def forward(self, im):
+        im = im[0]
+        feat = self.conv_block1(im)
+        attn_feat = self.Deform_attention1(feat)
+        attn_feat = self.conv_block2(attn_feat)
+        attn_feat = self.Deform_attention1(attn_feat)
+        attn_feat = self.conv2(attn_feat)
+
+        return attn_feat.unsqueeze(0)
+
 
 class DATSRNet(nn.Module):
     def __init__(self, alignment, attention, fusion, decoder):
         super().__init__()
 
-        self.alignment = alignment
         self.attention = attention
+        self.alignment = alignment
         self.fusion = fusion
         self.decoder = decoder
 
     def forward(self, im):
-        out_attn = self.attention(im[0]) # [1 14 4 48 48]
-        out_enc = self.alignment(out_attn.unsqueeze(0))
+        out_attn = self.attention(im) # [1 14 4 48 48]
+        out_enc = self.alignment(out_attn)
         out_fus = self.fusion(out_enc)
         out_dec = self.decoder(out_fus)
 
@@ -110,8 +177,39 @@ def datsrnet(alignment_init_dim, reduction, alignment_out_dim, dec_init_conv_dim
 
     ebfa = EBFA(num_features=alignment_init_dim, reduction=reduction)
 
-    attention = DeformableAttention(
-        dim = 4,                   # feature dimensions
+    attention = DAttention(
+        dim = 4,                    # feature dimensions
+        dim_head = 64,              # dimension per head
+        heads = 8,                  # attention heads
+        dropout = 0.,               # dropout
+        downsample_factor = 4,      # downsample factor (r in paper)
+        offset_scale = 4,           # scale of offset, maximum offset
+        offset_groups = 1,          # number of offset groups, should be multiple of heads
+        offset_kernel_size = 6,     # offset kernel size
+    )
+    fusion = MergeBlockDiff(input_dim=64, project_dim=64)
+    decoder = ResPixShuffleConv(alignment_out_dim, dec_init_conv_dim, dec_num_pre_res_blocks,
+                                dec_post_conv_dim, dec_num_post_res_blocks,
+                                upsample_factor=upsample_factor, activation=activation,
+                                gauss_blur_sd=gauss_blur_sd, icnrinit=icnrinit,
+                                gauss_ksz=gauss_ksz)
+
+    net = DATSRNet(alignment=ebfa, attention=attention, fusion=fusion, decoder=decoder)
+
+    return net
+
+
+@model_constructor
+def datsrnetv2(alignment_init_dim, reduction, alignment_out_dim, dec_init_conv_dim, 
+             dec_num_pre_res_blocks, dec_post_conv_dim, dec_num_post_res_blocks, 
+             upsample_factor=2, activation='relu', icnrinit=False, 
+             gauss_blur_sd=None, gauss_ksz=3, 
+             ):
+
+    ebfa = EBFA(num_features=alignment_init_dim, reduction=reduction)
+
+    attention = DAttentionv2(
+        dim = 4,                    # feature dimensions
         dim_head = 64,              # dimension per head
         heads = 8,                  # attention heads
         dropout = 0.,               # dropout

@@ -60,6 +60,7 @@ class FlowGuidedDCNAlign(nn.Module):
             self.alignment_net = self.alignment_net.eval()
             ref_flows = self.alignment_net(x_oth, x_ref)
         
+        ref_flows = ref_flows.unsqueeze(0)
         zero_flow = torch.zeros((B, 1, *ref_flows.shape[-3:])).cuda()
         ref_flows = torch.cat( [zero_flow, ref_flows], dim=1)
 

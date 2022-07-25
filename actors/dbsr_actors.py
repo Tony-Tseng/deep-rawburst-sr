@@ -124,3 +124,51 @@ class DBSRRealWorldActor(BaseActor):
             stats['Stat/psnr'] = psnr.item()
 
         return loss, stats
+
+class DCNSRRealWorldActor(BaseActor):
+    """Actor for training DBSR model on real-world bursts from BurstSR dataset"""
+    def __init__(self, net, objective, alignment_net, loss_weight=None, sr_factor=4):
+        super().__init__(net, objective)
+        if loss_weight is None:
+            loss_weight = {'rgb': 1.0}
+
+        self.sca = SpatialColorAlignment(alignment_net.eval(), sr_factor=sr_factor)
+        self.loss_weight = loss_weight
+        self.train_loss = nn.L1Loss()
+
+    def to(self, device):
+        """ Move the network to device
+        args:
+            device - device to use. 'cpu' or 'cuda'
+        """
+        self.net.to(device)
+        self.sca.to(device)
+
+    def __call__(self, data):
+        # Run network
+        gt = data['frame_gt']
+        burst = data['burst']
+        pred, aux_dict = self.net(burst)
+
+        # Perform spatial and color alignment of the prediction
+        pred_warped_m, valid = self.sca(pred, gt, burst)
+
+        # Compute loss
+        # loss_rgb_raw = self.objective['rgb'](pred_warped_m, gt, valid=valid)
+        loss_rgb = self.train_loss(pred_warped_m, gt)
+
+        # loss_rgb = self.loss_weight['rgb'] * loss_rgb_raw
+
+        if 'psnr' in self.objective.keys():
+            # detach, otherwise there is memory leak
+            psnr = self.objective['psnr'](pred_warped_m.clone().detach(), gt, valid=valid)
+
+        loss = loss_rgb
+
+        stats = {'Loss/total': loss.item(),
+                 'Loss/rgb': loss_rgb.item()}
+
+        if 'psnr' in self.objective.keys():
+            stats['Stat/psnr'] = psnr.item()
+
+        return loss, stats

@@ -28,6 +28,7 @@ import cv2
 import tqdm
 from admin.environment import env_settings
 from dataset.synthetic_burst_val_set import SyntheticBurstVal
+from data.postprocessing_functions import SimplePostProcess
 
 
 def save_results(setting_name):
@@ -40,6 +41,8 @@ def save_results(setting_name):
 
     base_results_dir = env_settings().save_data_path
     dataset = SyntheticBurstVal()
+
+    process_fn = SimplePostProcess(return_np=True)
 
     for n in network_list:
         net = n.load_net()
@@ -64,6 +67,8 @@ def save_results(setting_name):
                 # Normalize to 0  2^14 range and convert to numpy array
                 net_pred_np = (net_pred.squeeze(0).permute(1, 2, 0).clamp(0.0, 1.0) * 2 ** 14).cpu().numpy().astype(
                     np.uint16)
+                
+                # pred_process = process_fn.process(net_pred.squeeze(0).cpu(), meta_info)
 
                 # Save predictions as png
                 cv2.imwrite('{}/{}.png'.format(out_dir, burst_name), net_pred_np)

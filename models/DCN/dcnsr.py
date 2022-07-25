@@ -363,7 +363,6 @@ class MergeBlockUNetDiff(nn.Module):
         feat_diff = feat - base_feat_proj
         
         weight = self.weight_predictor(feat)
-        # weights_norm = F.softmax(weight, dim=1)
         weights_norm = F.softmax(weight, dim=0)
         fused_feat = (feat * weights_norm).sum(dim=0)
         

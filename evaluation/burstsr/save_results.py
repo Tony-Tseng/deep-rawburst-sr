@@ -19,7 +19,7 @@ env_path = os.path.join(os.path.dirname(__file__), '../..')
 if env_path not in sys.path:
     sys.path.append(env_path)
 
-from dataset.burstsr_dataset import get_burstsr_val_set
+from dataset.burstsr_dataset import get_burstsr_val_set, CanonImage
 import torch
 
 import argparse
@@ -53,6 +53,7 @@ def save_results(setting_name):
             data = dataset[idx]
             burst = data['burst'].unsqueeze(0)
             burst_name = data['burst_name']
+            meta_info_burst = data['meta_info_burst']
 
             burst = burst.to(device)
 
@@ -62,11 +63,17 @@ def save_results(setting_name):
             with torch.no_grad():
                 net_pred, _ = net(burst)
 
-            net_pred_np = (net_pred.squeeze(0).permute(1, 2, 0).clamp(0.0, 1.0) * 2 ** 14).cpu().numpy().astype(
-                np.uint16)
+            # net_pred_np = (net_pred.squeeze(0).permute(1, 2, 0).clamp(0.0, 1.0) * 2 ** 14).cpu().numpy().astype(
+            #     np.uint16)
+            
+            pred_proc_np = CanonImage.generate_processed_image(net_pred[0].cpu(), meta_info_burst, return_np=True,
+                                                               gamma=True,
+                                                               smoothstep=True,
+                                                               no_white_balance=False,
+                                                               external_norm_factor=None)
 
             # Save predictions as png
-            cv2.imwrite('{}/{}.png'.format(out_dir, burst_name), net_pred_np)
+            cv2.imwrite('{}/{}.png'.format(out_dir, burst_name), pred_proc_np)
 
 
 if __name__ == '__main__':
