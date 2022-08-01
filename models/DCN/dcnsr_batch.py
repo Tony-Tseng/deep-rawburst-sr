@@ -96,6 +96,7 @@ class EBFA(nn.Module):
     def __init__(self, num_features=64, reduction=8, bias=False):
         super().__init__()
         
+        self.num_features = num_features
         self.conv1 = nn.Sequential(nn.Conv2d(4, num_features, kernel_size=3, padding=1, bias=bias))
 
         ####### Edge Boosting Feature Alignment
@@ -163,17 +164,26 @@ class EBFA(nn.Module):
         # Input: (B, 4, H/2, W/2)    
         # Output: (1, 3, 4H, 4W)
         ###################
-        
-        burst = burst[0]
+        B, N, C, H, W = burst.shape
+        # base_frame = burst[:, 0, ...]
+
+        # burst = burst[0]
+        burst = burst.view(-1, C, H, W)         # B * N, C, H/2, W/2
         burst_feat = self.conv1(burst)          # (B, num_features, H/2, W/2)
 
+        # burst_feat = burst_feat.view(B, N, self.num_features, H, W)
         ##################################################
         ####### Edge Boosting Feature Alignment #################
         ##################################################
-
-        base_frame_feat = burst_feat[0].unsqueeze(0)
-        burst_feat = self.encoder(burst_feat)               
         
+        base_frame_feat = burst_feat[::N, ...].unsqueeze(1)
+        base_frame_feat = base_frame_feat.repeat(1, N, 1, 1, 1)
+        base_frame_feat = base_frame_feat.view(-1, self.num_features, H, W)
+        # burst_feat = burst_feat.view(-1, self.num_features, H, W)
+
+        # base_frame_feat = burst_feat[0].unsqueeze(0)
+        burst_feat = self.encoder(burst_feat)
+
         ## Burst Feature Alignment
         burst_feat = self.def_alignment(burst_feat)
 
@@ -183,7 +193,7 @@ class EBFA(nn.Module):
         Residual = self.cor_conv1(Residual)
         burst_feat = Residual + burst_feat          # (B, num_features, H/2, W/2)
         
-        return burst_feat
+        return burst_feat #.view(B, N, C, H, W)
 
 
 class MergeBlock(nn.Module):

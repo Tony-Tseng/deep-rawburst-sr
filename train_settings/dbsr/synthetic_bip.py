@@ -16,7 +16,7 @@ import torch.optim as optim
 import dataset as datasets
 from data import processing, sampler, DataLoader
 # import models.dbsr.dbsrnet as dbsr_nets
-import models.DCN.dcnsr as dcnsr_net
+import models.DCN.dcnsr_origin as dcnsr_net
 import actors.dbsr_actors as dbsr_actors
 from trainers import SimpleTrainer
 import data.transforms as tfm

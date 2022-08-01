@@ -15,8 +15,7 @@
 import torch.optim as optim
 import dataset as datasets
 from data import processing, sampler, DataLoader
-# import models.dbsr.dbsrnet as dbsr_nets
-import models.DCN.dcnsr_unet_diff as dcnsr_net
+import models.DCN.dcnsr_batch as dcnsr_net
 import actors.dbsr_actors as dbsr_actors
 from trainers import SimpleTrainer
 import data.transforms as tfm
@@ -26,10 +25,12 @@ import torch.nn as nn
 
 from dataset.synthetic_burst_train_set import SyntheticBurst
 
+def count_parameters(model):
+    return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
 def run(settings):
     settings.description = 'Default settings for training DBSR models on synthetic burst dataset '
-    settings.batch_size = 1
+    settings.batch_size = 4
     settings.num_workers = 8
     settings.multi_gpu = False
     settings.print_interval = 1000
@@ -77,10 +78,13 @@ def run(settings):
     loader_val = DataLoader('val', test_dataset, training=False, num_workers=settings.num_workers,
                             stack_dim=0, batch_size=settings.batch_size, epoch_interval=5)
 
-    net = dcnsr_net.dcnsrnet_unet_diff(alignment_init_dim=64, reduction=8, alignment_out_dim=64, 
+    net = dcnsr_net.dcnsrnet(alignment_init_dim=64, reduction=8, alignment_out_dim=64, 
                              dec_init_conv_dim=64, dec_num_pre_res_blocks=5, dec_post_conv_dim=32, 
                              dec_num_post_res_blocks=4, burst_size=settings.burst_sz, upsample_factor=settings.downsample_factor * 2, 
                              icnrinit=True, gauss_blur_sd=1.0)
+
+    total_param = count_parameters(net)
+    print("The total Net parameter is ", total_param)
 
     # Wrap the network for multi GPU training
     if settings.multi_gpu:
@@ -93,10 +97,9 @@ def run(settings):
 
     actor = dbsr_actors.DCNSRSyntheticActor(net=net, objective=objective, loss_weight=loss_weight)
 
-    optimizer = optim.Adam([{'params': actor.net.parameters(), 'lr': 1e-4}],
-                           lr=2e-4)
-
-    lr_scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=40, gamma=0.2)
+    optimizer = optim.AdamW(actor.net.parameters(), lr=1e-4)
+    lr_scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, 300, eta_min=1e-6)
+    
     trainer = SimpleTrainer(actor, [loader_train, loader_val], optimizer, settings, lr_scheduler)
 
     trainer.train(150, load_latest=True, fail_safe=True)

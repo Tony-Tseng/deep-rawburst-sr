@@ -19,6 +19,8 @@ from admin.stats import AverageMeter, StatValue
 from admin.tensorboard import TensorboardWriter
 import torch
 import time
+from utils.fetch_gradient import get_grad_flow
+from torch.utils.tensorboard import SummaryWriter
 
 
 class SimpleTrainer(BaseTrainer):
@@ -37,11 +39,15 @@ class SimpleTrainer(BaseTrainer):
         self._set_default_settings()
 
         # Initialize statistics variables
-        self.stats = OrderedDict({loader.name: None for loader in self.loaders})
+        self.stats = OrderedDict({loader.name: {} for loader in self.loaders})
 
         # Initialize tensorboard
-        tensorboard_writer_dir = os.path.join(self.settings.env.tensorboard_dir, self.settings.project_path)
+        tensorboard_writer_dir = os.path.join(self.settings.env.tensorboard_dir, self.settings.project_path, 'status')
+        self.tensorboard_gradient_writer_dir = os.path.join(self.settings.env.tensorboard_dir, self.settings.project_path, 'gradient')
+
         self.tensorboard_writer = TensorboardWriter(tensorboard_writer_dir, [l.name for l in loaders])
+        self.layer = None
+        # self.tensorboard_gradient_writer = SummaryWriter(tensorboard_gradient_writer_dir)
 
         self.move_data_to_gpu = getattr(settings, 'move_data_to_gpu', True)
 
@@ -94,6 +100,18 @@ class SimpleTrainer(BaseTrainer):
         for loader in self.loaders:
             if self.epoch % loader.epoch_interval == 0:
                 self.cycle_dataset(loader)
+
+        max_grads, ave_grads, layers = get_grad_flow(self.actor.net.named_parameters())
+        if self.layer is None:
+            self.grad = OrderedDict({l: {} for l in layers})
+            self.layer = layers
+            self.tensorboard_gradient_writer = TensorboardWriter(self.tensorboard_gradient_writer_dir, [l for l in layers])
+        
+        for idx, layer in enumerate(layers):
+            self.grad[layer] = {
+                "Max": max_grads[idx].item(),
+                "Average": ave_grads[idx].item()
+            }
 
         self._stats_new_epoch()
         self._write_tensorboard()
@@ -148,5 +166,7 @@ class SimpleTrainer(BaseTrainer):
     def _write_tensorboard(self):
         if self.epoch == 1:
             self.tensorboard_writer.write_info(self.settings.module_name, self.settings.script_name, self.settings.description)
-
+            self.tensorboard_gradient_writer.write_info(self.settings.module_name, self.settings.script_name, self.settings.description)
+        
         self.tensorboard_writer.write_epoch(self.stats, self.epoch)
+        self.tensorboard_gradient_writer.write_grad_epoch(self.grad, self.epoch)

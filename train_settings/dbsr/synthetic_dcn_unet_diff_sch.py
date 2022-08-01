@@ -16,7 +16,7 @@ import torch.optim as optim
 import dataset as datasets
 from data import processing, sampler, DataLoader
 # import models.dbsr.dbsrnet as dbsr_nets
-import models.DCN.dcnsr as dcnsr_net
+import models.DCN.dcnsr_origin as dcnsr_net
 import actors.dbsr_actors as dbsr_actors
 from trainers import SimpleTrainer
 import data.transforms as tfm
@@ -34,7 +34,7 @@ def run(settings):
     settings.batch_size = 1
     settings.num_workers = 8
     settings.multi_gpu = False
-    settings.print_interval = 1000
+    settings.print_interval = 1
 
     settings.crop_sz = (384, 384)
     settings.burst_sz = 14

@@ -15,7 +15,7 @@
 from actors.base_actor import BaseActor
 from models.loss.spatial_color_alignment import SpatialColorAlignment
 import torch.nn as nn
-
+from utils.fetch_gradient import get_grad_flow
 
 class DBSRSyntheticActor(BaseActor):
     """Actor for training DBSR model on synthetic bursts """

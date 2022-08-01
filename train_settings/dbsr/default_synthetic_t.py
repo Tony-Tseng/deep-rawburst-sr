@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import torch.optim as optim
+import torch
 import dataset as datasets
 from data import processing, sampler, DataLoader
 import models.dbsr.dbsrnet as dbsr_nets
@@ -22,10 +23,9 @@ import data.transforms as tfm
 from admin.multigpu import MultiGPU
 from models.loss.image_quality_v2 import PSNR, PixelWiseError
 
-
 def run(settings):
     settings.description = 'Default settings for training DBSR models on synthetic burst dataset '
-    settings.batch_size = 8
+    settings.batch_size = 2
     settings.num_workers = 8
     settings.multi_gpu = False
     settings.print_interval = 1
@@ -61,9 +61,9 @@ def run(settings):
 
     # Train sampler and loader
     dataset_train = sampler.RandomImage([zurich_raw2rgb_train], [1],
-                                        samples_per_epoch=settings.batch_size * 40000, processing=data_processing_train)
+                                        samples_per_epoch=settings.batch_size * 2, processing=data_processing_train)
     dataset_val = sampler.RandomImage([zurich_raw2rgb_val], [1],
-                                      samples_per_epoch=settings.batch_size * 200, processing=data_processing_val)
+                                      samples_per_epoch=settings.batch_size * 1, processing=data_processing_val)
 
     loader_train = DataLoader('train', dataset_train, training=True, num_workers=settings.num_workers,
                               stack_dim=0, batch_size=settings.batch_size)
@@ -93,8 +93,7 @@ def run(settings):
 
     optimizer = optim.Adam([{'params': actor.net.parameters(), 'lr': 1e-4}],
                            lr=2e-4)
-
     lr_scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=40, gamma=0.2)
     trainer = SimpleTrainer(actor, [loader_train, loader_val], optimizer, settings, lr_scheduler)
 
-    trainer.train(100, load_latest=True, fail_safe=True)
+    trainer.train(50, load_latest=True, fail_safe=True)

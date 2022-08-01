@@ -26,3 +26,8 @@ class TensorboardWriter:
             for var_name, val in loader_stats.items():
                 if hasattr(val, 'history') and getattr(val, 'has_new_data', True):
                     self.writer[loader_name].add_scalar(var_name, val.history[ind], epoch)
+    
+    def write_grad_epoch(self, stats: OrderedDict, epoch):
+        for layer, info in stats.items():
+            for var_name, val in info.items():
+                self.writer[layer].add_scalar(var_name, val, epoch)

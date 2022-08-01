@@ -15,7 +15,6 @@
 import torch.optim as optim
 import dataset as datasets
 from data import processing, sampler, DataLoader
-# import models.dbsr.dbsrnet as dbsr_nets
 import models.DCN.dcnsr as dcnsr_net
 import actors.dbsr_actors as dbsr_actors
 from trainers import SimpleTrainer
@@ -34,7 +33,7 @@ def run(settings):
     settings.batch_size = 1
     settings.num_workers = 8
     settings.multi_gpu = False
-    settings.print_interval = 1
+    settings.print_interval = 1000
 
     settings.crop_sz = (384, 384)
     settings.burst_sz = 14
@@ -84,6 +83,9 @@ def run(settings):
                              dec_num_post_res_blocks=4, burst_size=settings.burst_sz, upsample_factor=settings.downsample_factor * 2, 
                              icnrinit=True, gauss_blur_sd=1.0)
 
+    total_param = count_parameters(net)
+    print("The total Net parameter is ", total_param)
+
     # Wrap the network for multi GPU training
     if settings.multi_gpu:
         # net = MultiGPU(net, dim=0)
@@ -95,10 +97,9 @@ def run(settings):
 
     actor = dbsr_actors.DCNSRSyntheticActor(net=net, objective=objective, loss_weight=loss_weight)
 
-    optimizer = optim.Adam([{'params': actor.net.parameters(), 'lr': 1e-4}],
-                           lr=2e-4)
-
-    lr_scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=40, gamma=0.2)
+    optimizer = optim.AdamW(actor.net.parameters(), lr=1e-4)
+    lr_scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, 300, eta_min=1e-6)
+    
     trainer = SimpleTrainer(actor, [loader_train, loader_val], optimizer, settings, lr_scheduler)
 
     trainer.train(150, load_latest=True, fail_safe=True)
