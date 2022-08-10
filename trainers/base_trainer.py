@@ -32,7 +32,7 @@ class BaseTrainer:
         self.device = getattr(settings, 'device', None)
         
         if self.device is None:
-            self.device = torch.device("cuda:1" if torch.cuda.is_available() and settings.use_gpu else "cpu")
+            self.device = torch.device("cuda:2" if torch.cuda.is_available() and settings.use_gpu else "cpu")
 
         self.actor.to(self.device)
 

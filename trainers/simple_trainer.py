@@ -47,7 +47,6 @@ class SimpleTrainer(BaseTrainer):
 
         self.tensorboard_writer = TensorboardWriter(tensorboard_writer_dir, [l.name for l in loaders])
         self.layer = None
-        # self.tensorboard_gradient_writer = SummaryWriter(tensorboard_gradient_writer_dir)
 
         self.move_data_to_gpu = getattr(settings, 'move_data_to_gpu', True)
 
