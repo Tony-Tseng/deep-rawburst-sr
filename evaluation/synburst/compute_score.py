@@ -47,7 +47,7 @@ def compute_score(setting_name, load_saved=False):
     dataset = SyntheticBurstVal()
 
     metrics = ('psnr', 'ssim', 'lpips')
-    device = 'cuda'
+    device = 'cuda:1'
     boundary_ignore = 40
     metrics_all = {}
     scores = {}
@@ -85,7 +85,7 @@ def compute_score(setting_name, load_saved=False):
 
         if not using_saved_results:
             net = n.load_net()
-            device = 'cuda'
+            # device = 'cuda'
             net.to(device).train(False)
 
         for idx in tqdm.tqdm(range(len(dataset))):
