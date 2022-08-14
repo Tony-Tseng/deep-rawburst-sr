@@ -261,7 +261,7 @@ class FGDCNSRNet(nn.Module):
                 ref_flows[1][:, i, :, :, :].clone(), 
                 ref_flows[2][:, i, :, :, :].clone()
             ]
-            # print(nbr_fea_l[0].shape, flows_l[0].shape)
+            
             nbr_warped_l = [
                 flow_warp(nbr_fea_l[0], flows_l[0].permute(0, 2, 3, 1), 'bilinear'),
                 flow_warp(nbr_fea_l[1], flows_l[1].permute(0, 2, 3, 1), 'bilinear'),
@@ -270,7 +270,6 @@ class FGDCNSRNet(nn.Module):
             aligned_fea.append(self.align(nbr_fea_l, nbr_warped_l, ref_fea_l, flows_l))
 
         aligned_fea = torch.stack(aligned_fea, dim=1)  # [B, N, C, H, W] --> [B, T, C, H, W]
-
         out_fus = self.fusion(aligned_fea)
         out_dec = self.decoder(out_fus)
 
@@ -409,8 +408,6 @@ def fgdcnnet(num_features, reduction, alignment_out_dim, dec_init_conv_dim,
              burst_size, upsample_factor=2, activation='relu', icnrinit=False,
              gauss_blur_sd=None, gauss_ksz=3, 
              ):
-    # alignment_net = PWCNet(load_pretrained=True,
-    #                     weights_path='{}/pwcnet-network-default.pth'.format(env_settings().pretrained_nets_dir))
     flowPCD = FlowGuidedPCDAlign(nf=num_features, groups=reduction)
     fusion = MergeBlockDiff(input_dim=64, project_dim=64)
     decoder = ResPixShuffleConv(alignment_out_dim, dec_init_conv_dim, dec_num_pre_res_blocks,

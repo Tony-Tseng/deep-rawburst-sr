@@ -8,3 +8,5 @@ admin/local.py
 pretrained_networks/*
 events.out.*
 *.png
+DCNv2/*.so
+DCNv2/build/*
