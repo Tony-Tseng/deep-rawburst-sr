@@ -96,6 +96,7 @@ class EBFA(nn.Module):
     def __init__(self, num_features=64, reduction=8, bias=False):
         super().__init__()
         
+        self.num_features = num_features
         self.conv1 = nn.Sequential(nn.Conv2d(4, num_features, kernel_size=3, padding=1, bias=bias))
 
         ####### Edge Boosting Feature Alignment
@@ -121,8 +122,8 @@ class EBFA(nn.Module):
         # Deform Conv
         self.deform1 = DeformConv2d(num_features, num_features, 3, padding=1, groups=deform_groups)
         self.deform2 = DeformConv2d(num_features, num_features, 3, padding=1, groups=deform_groups)
-        # self.deform3 = DeformConv2d(num_features, num_features, 3, padding=1, groups=deform_groups)
-        # self.deform4 = DeformConv2d(num_features, num_features, 3, padding=1, groups=deform_groups)
+        self.deform3 = DeformConv2d(num_features, num_features, 3, padding=1, groups=deform_groups)
+        self.deform4 = DeformConv2d(num_features, num_features, 3, padding=1, groups=deform_groups)
         
         ## Refined Aligned Feature
         self.feat_ext1 = nn.Sequential(*[RGCAB(num_features, 3, reduction) for _ in range(3)])
@@ -148,13 +149,13 @@ class EBFA(nn.Module):
         feat = self.deform1(feat, offset1, mask1)
         
         offset2, mask2 = self.offset_gen(self.offset_conv2(feat))
-        aligned_feat = self.deform2(feat, offset2, mask2)
+        feat = self.deform2(feat, offset2, mask2)
         
-        # offset3, mask3 = self.offset_gen(self.offset_conv3(feat))
-        # aligned_feat = self.deform3(burst_feat, offset3, mask3)
+        offset3, mask3 = self.offset_gen(self.offset_conv3(feat))
+        feat = self.deform3(burst_feat, offset3, mask3)
         
-        # offset4, mask4 = self.offset_gen(self.offset_conv4(feat))
-        # aligned_feat = self.deform4(feat, offset4, mask4)        
+        offset4, mask4 = self.offset_gen(self.offset_conv4(feat))
+        aligned_feat = self.deform4(feat, offset4, mask4)        
        
         return aligned_feat
     
@@ -163,17 +164,26 @@ class EBFA(nn.Module):
         # Input: (B, 4, H/2, W/2)    
         # Output: (1, 3, 4H, 4W)
         ###################
-        
-        burst = burst[0]
+        B, N, C, H, W = burst.shape
+        # base_frame = burst[:, 0, ...]
+
+        # burst = burst[0]
+        burst = burst.view(-1, C, H, W)         # B * N, C, H/2, W/2
         burst_feat = self.conv1(burst)          # (B, num_features, H/2, W/2)
 
+        # burst_feat = burst_feat.view(B, N, self.num_features, H, W)
         ##################################################
         ####### Edge Boosting Feature Alignment #################
         ##################################################
-
-        base_frame_feat = burst_feat[0].unsqueeze(0)
-        burst_feat = self.encoder(burst_feat)               
         
+        base_frame_feat = burst_feat[::N, ...].unsqueeze(1)
+        base_frame_feat = base_frame_feat.repeat(1, N, 1, 1, 1)
+        base_frame_feat = base_frame_feat.view(-1, self.num_features, H, W)
+        # burst_feat = burst_feat.view(-1, self.num_features, H, W)
+
+        # base_frame_feat = burst_feat[0].unsqueeze(0)
+        burst_feat = self.encoder(burst_feat)
+
         ## Burst Feature Alignment
         burst_feat = self.def_alignment(burst_feat)
 
@@ -183,7 +193,7 @@ class EBFA(nn.Module):
         Residual = self.cor_conv1(Residual)
         burst_feat = Residual + burst_feat          # (B, num_features, H/2, W/2)
         
-        return burst_feat
+        return burst_feat #.view(B, N, C, H, W)
 
 ##############################################################################################
 ######################### Multi-scale Feature Extractor ##########################################
@@ -249,7 +259,6 @@ class MSF(nn.Module):
         return dec_2
 
 
-
 class MergeBlockUNetDiff(nn.Module):
     def __init__(self, num_features, input_dim, project_dim, 
                  num_weight_predictor_res=1, use_bn=False, bias=False, 
@@ -282,10 +291,33 @@ class MergeBlockUNetDiff(nn.Module):
     def forward(self, feat):
         burst_feat = self.conv2(feat)       # (14, num_features, H/2, W/2)
         burst_feat = self.UNet(burst_feat)
-
-        base_feat_proj = burst_feat.mean(dim=0, keepdim=True)
-        feat_diff = feat - base_feat_proj
         
+        weight = self.weight_predictor(feat)
+        weights_norm = F.softmax(weight, dim=0)
+        fused_feat = (feat * weights_norm).sum(dim=0)
+        
+        return fused_feat.unsqueeze(0)
+    
+class MergeBlock(nn.Module):
+    def __init__(self, input_dim, project_dim, num_weight_predictor_res=1, 
+                 use_bn=False, activation='relu'):
+        super().__init__()
+        
+        weight_predictor = []
+        weight_predictor.append(blocks.conv_block(input_dim, 2 * project_dim, 3,
+                                                  stride=1, padding=1, batch_norm=use_bn, activation=activation))
+
+        for _ in range(num_weight_predictor_res):
+            weight_predictor.append(blocks.ResBlock(2 * project_dim, 2 * project_dim, stride=1,
+                                                    batch_norm=use_bn, activation=activation))
+
+        weight_predictor.append(blocks.conv_block(2 * project_dim, input_dim, 3, stride=1, padding=1,
+                                                  batch_norm=use_bn,
+                                                  activation='none'))
+
+        self.weight_predictor = nn.Sequential(*weight_predictor)
+    
+    def forward(self, feat):   
         weight = self.weight_predictor(feat)
         weights_norm = F.softmax(weight, dim=0)
         fused_feat = (feat * weights_norm).sum(dim=0)
@@ -336,7 +368,7 @@ class ResPixShuffleConv(nn.Module):
         return pred
 
 
-class DCNSRNetNoUnet(nn.Module):
+class DCNSRNet(nn.Module):
     """ DCN model"""
     def __init__(self, alignment, fusion, decoder):
         super().__init__()
@@ -351,7 +383,6 @@ class DCNSRNetNoUnet(nn.Module):
         out_dec = self.decoder(out_fus)
 
         return out_dec, out_fus
-
 
 @model_constructor
 def dcnsrnet_unet_mergediff(alignment_init_dim, reduction, alignment_out_dim, dec_init_conv_dim, 
@@ -368,6 +399,6 @@ def dcnsrnet_unet_mergediff(alignment_init_dim, reduction, alignment_out_dim, de
                                 gauss_blur_sd=gauss_blur_sd, icnrinit=icnrinit,
                                 gauss_ksz=gauss_ksz)
     
-    net = DCNSRNetNoUnet(alignment=ebfa, fusion=fusion, decoder = decoder)
+    net = DCNSRNet(alignment=ebfa, fusion=fusion, decoder = decoder)
     
     return net

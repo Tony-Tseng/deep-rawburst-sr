@@ -10,3 +10,5 @@ events.out.*
 *.png
 DCNv2/*.so
 DCNv2/build/*
+
+evaluation/synburst/experiments/dbsr_default.py
