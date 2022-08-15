@@ -182,8 +182,8 @@ class EBFA(nn.Module):
         ####### Edge Boosting Feature Alignment #################
         ##################################################
         
-        base_frame_feat = burst_feat[::N, ...].unsqueeze(1)
-        base_frame_feat = base_frame_feat.repeat(1, N, 1, 1, 1)
+        base_frame_feat = burst_feat[::N, ...].unsqueeze(1) # B, 1, C, H/2, W/2
+        base_frame_feat = base_frame_feat.repeat(1, N, 1, 1, 1) # 
         base_frame_feat = base_frame_feat.view(-1, self.num_features, H, W)
         # burst_feat = burst_feat.view(-1, self.num_features, H, W)
 
@@ -199,74 +199,11 @@ class EBFA(nn.Module):
         Residual = self.cor_conv1(Residual)
         burst_feat = Residual + burst_feat          # (B, num_features, H/2, W/2)
         
-        return burst_feat #.view(B, N, C, H, W)
-
-##############################################################################################
-######################### Multi-scale Feature Extractor ##########################################
-##############################################################################################
-
-class UpSample(nn.Module):
-
-    def __init__(self, in_channels, chan_factor, bias=False):
-        super(UpSample, self).__init__()
-
-        self.up = nn.Sequential(nn.Conv2d(in_channels, int(in_channels/chan_factor), 1, stride=1, padding=0, bias=bias),
-                                 nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True))
-
-    def forward(self, x):
-        x = self.up(x)
-        return x
-
-class DownSample(nn.Module):
-    def __init__(self, in_channels, chan_factor, bias=False):
-        super(DownSample, self).__init__()
-
-        self.down = nn.Sequential(nn.AvgPool2d(2, ceil_mode=True, count_include_pad=False),
-                                nn.Conv2d(in_channels, int(in_channels*chan_factor), 1, stride=1, bias=bias))
-
-    def forward(self, x):
-        x = self.down(x)
-        return x
-    
-class MSF(nn.Module):
-    def __init__(self, in_channels=64, reduction=8, bias=False):
-        super(MSF, self).__init__()
-        
-        self.feat_ext1 = nn.Sequential(*[RGCAB(in_channels, 2, reduction) for _ in range(2)])
-        
-        self.down1 = DownSample(in_channels, chan_factor=1.5)
-        self.feat_ext2 = nn.Sequential(*[RGCAB(int(in_channels*1.5), 2, reduction) for _ in range(2)])
-        
-        self.down2 = DownSample(int(in_channels*1.5), chan_factor=1.5)
-        self.feat_ext3 = nn.Sequential(*[RGCAB(int(in_channels*1.5*1.5), 2, reduction) for _ in range(1)])
-               
-        self.up2 = UpSample(int(in_channels*1.5*1.5), chan_factor=1.5)
-        self.feat_ext5 = nn.Sequential(*[RGCAB(int(in_channels*1.5), 2, reduction) for _ in range(2)])
-        
-        self.up1 = UpSample(int(in_channels*1.5), chan_factor=1.5)
-        self.feat_ext6 = nn.Sequential(*[RGCAB(in_channels, 2, reduction) for _ in range(2)])
-        
-    def forward(self, x):
-        
-        x = self.feat_ext1(x) # torch.Size([14, 64, 48, 48])
-        
-        enc_1 = self.down1(x)
-        enc_1 = self.feat_ext2(enc_1) # torch.Size([14, 96, 24, 24])
-        
-        enc_2 = self.down2(enc_1)
-        enc_2 = self.feat_ext3(enc_2) # torch.Size([14, 144, 12, 12])
-        
-        dec_2 = self.up2(enc_2)
-        dec_2 = self.feat_ext5(dec_2 + enc_1) # torch.Size([14, 96, 24, 24])
-        
-        dec_1 = self.up1(dec_2)
-        dec_2 = self.feat_ext6(dec_1 + x) # torch.Size([14, 64, 48, 48])
-        
-        return dec_2
+        return burst_feat.view(B, N, -1, H, W)
 
 
 class MergeBlockUNetDiff(nn.Module):
-    def __init__(self, num_features, input_dim, project_dim, 
+    def __init__(self, num_features, input_dim, project_dim, burst_size=14, 
                  num_weight_predictor_res=1, use_bn=False, bias=False, 
                  activation='relu'):
         super().__init__()
@@ -284,51 +221,18 @@ class MergeBlockUNetDiff(nn.Module):
                                                   activation='none'))
 
         self.weight_predictor = nn.Sequential(*weight_predictor)
-
-        self.conv2 = nn.Sequential(nn.Conv2d(num_features, num_features, kernel_size=3, padding=1, bias=bias))
-        self.UNet = nn.Sequential(MSF(num_features))
-
-        for param in self.conv2.parameters():
-            param.requires_grad = False
-
-        for param in self.UNet.parameters():
-            param.requires_grad = False
     
     def forward(self, feat):
-        burst_feat = self.conv2(feat)       # (14, num_features, H/2, W/2)
-        burst_feat = self.UNet(burst_feat)
-        
-        weight = self.weight_predictor(feat)
-        weights_norm = F.softmax(weight, dim=0)
-        fused_feat = (feat * weights_norm).sum(dim=0)
-        
-        return fused_feat.unsqueeze(0)
-    
-class MergeBlock(nn.Module):
-    def __init__(self, input_dim, project_dim, num_weight_predictor_res=1, 
-                 use_bn=False, activation='relu'):
-        super().__init__()
-        
-        weight_predictor = []
-        weight_predictor.append(blocks.conv_block(input_dim, 2 * project_dim, 3,
-                                                  stride=1, padding=1, batch_norm=use_bn, activation=activation))
+        fused_feat = []
 
-        for _ in range(num_weight_predictor_res):
-            weight_predictor.append(blocks.ResBlock(2 * project_dim, 2 * project_dim, stride=1,
-                                                    batch_norm=use_bn, activation=activation))
-
-        weight_predictor.append(blocks.conv_block(2 * project_dim, input_dim, 3, stride=1, padding=1,
-                                                  batch_norm=use_bn,
-                                                  activation='none'))
-
-        self.weight_predictor = nn.Sequential(*weight_predictor)
-    
-    def forward(self, feat):   
-        weight = self.weight_predictor(feat)
-        weights_norm = F.softmax(weight, dim=0)
-        fused_feat = (feat * weights_norm).sum(dim=0)
+        for i in range(feat.shape[0]):
+            weight = self.weight_predictor(feat[i, ...])
+            weights_norm = F.softmax(weight, dim=0)
+            fused_feat.append((feat[i, ...] * weights_norm).sum(dim=0))
         
-        return fused_feat.unsqueeze(0)
+        fused_feat = torch.stack(fused_feat, dim=0)
+        
+        return fused_feat #.unsqueeze(0)
 
 
 class ResPixShuffleConv(nn.Module):
@@ -398,7 +302,7 @@ def dcnsrnet_unet_mergediff(alignment_init_dim, reduction, alignment_out_dim, de
              ):
     
     ebfa = EBFA(num_features=alignment_init_dim, reduction=reduction)
-    fusion = MergeBlockUNetDiff(num_features=alignment_init_dim, input_dim=64, project_dim=64)
+    fusion = MergeBlockUNetDiff(num_features=alignment_init_dim, input_dim=64, project_dim=64, burst_size=burst_size)
     decoder = ResPixShuffleConv(alignment_out_dim, dec_init_conv_dim, dec_num_pre_res_blocks,
                                 dec_post_conv_dim, dec_num_post_res_blocks,
                                 upsample_factor=upsample_factor, activation=activation,
