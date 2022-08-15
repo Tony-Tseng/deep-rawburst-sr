@@ -31,7 +31,7 @@ def count_parameters(model):
 
 def run(settings):
     settings.description = 'Default settings for training DBSR models on synthetic burst dataset '
-    settings.batch_size = 1
+    settings.batch_size = 4
     settings.num_workers = 8
     settings.multi_gpu = False
     settings.print_interval = 1000

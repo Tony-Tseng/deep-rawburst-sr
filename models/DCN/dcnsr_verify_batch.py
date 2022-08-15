@@ -137,11 +137,17 @@ class EBFA(nn.Module):
         return offset, mask
     
     
-    def def_alignment(self, burst_feat):
+    def def_alignment(self, burst_feat, N):
         
         b, f, H, W = burst_feat.size()
-        ref = burst_feat[0].unsqueeze(0)
-        ref = torch.repeat_interleave(ref, b, dim=0)
+        
+        # >>> 8/15 Tony modify for batch input
+        ref = burst_feat[::N, ...].unsqueeze(0)
+        ref = torch.repeat_interleave(ref, N, dim=0)
+        ref = ref.view(-1, f, H, W)
+        # ref = burst_feat[0].unsqueeze(0)
+        # ref = torch.repeat_interleave(ref, b, dim=0)
+        # <<<
 
         feat = self.bottleneck(torch.cat([ref, burst_feat], dim=1))
 
@@ -185,7 +191,7 @@ class EBFA(nn.Module):
         burst_feat = self.encoder(burst_feat)
 
         ## Burst Feature Alignment
-        burst_feat = self.def_alignment(burst_feat)
+        burst_feat = self.def_alignment(burst_feat, N)
 
         ## Refined Aligned Feature
         burst_feat = self.feat_ext1(burst_feat)                
