@@ -16,7 +16,7 @@ import torch.optim as optim
 import dataset as datasets
 from data import processing, sampler, DataLoader
 # import models.dbsr.dbsrnet as dbsr_nets
-import models.DCN.fusion.dcnsr_3dcn_nonfusion as dcnsr_net
+import models.DCN.upsample.dcn3sr_noresidual as dcnsr_net
 import actors.dbsr_actors as dbsr_actors
 from trainers import SimpleTrainer
 import data.transforms as tfm
@@ -79,10 +79,7 @@ def run(settings):
     loader_val = DataLoader('val', test_dataset, training=False, num_workers=settings.num_workers,
                             stack_dim=0, batch_size=settings.batch_size, epoch_interval=5)
 
-    net = dcnsr_net.dcnsrnet_unet_mergediff(alignment_init_dim=64, reduction=8, alignment_out_dim=96, 
-                             dec_init_conv_dim=64, dec_num_pre_res_blocks=5, dec_post_conv_dim=32, 
-                             dec_num_post_res_blocks=4, burst_size=settings.burst_sz, upsample_factor=settings.downsample_factor * 2, 
-                             icnrinit=True, gauss_blur_sd=1.0)
+    net = dcnsr_net.dcnsrnet_unet_mergediff(alignment_init_dim=64, reduction=8)
 
     total_param = count_parameters(net)
     print("The total Net parameter is ", total_param)
