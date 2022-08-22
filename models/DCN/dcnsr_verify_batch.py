@@ -137,17 +137,11 @@ class EBFA(nn.Module):
         return offset, mask
     
     
-    def def_alignment(self, burst_feat, N):
+    def def_alignment(self, burst_feat):
         
         b, f, H, W = burst_feat.size()
-        
-        # >>> 8/15 Tony modify for batch input
-        ref = burst_feat[::N, ...].unsqueeze(0)
-        ref = torch.repeat_interleave(ref, N, dim=0)
-        ref = ref.view(-1, f, H, W)
-        # ref = burst_feat[0].unsqueeze(0)
-        # ref = torch.repeat_interleave(ref, b, dim=0)
-        # <<<
+        ref = burst_feat[0].unsqueeze(0)
+        ref = torch.repeat_interleave(ref, b, dim=0)
 
         feat = self.bottleneck(torch.cat([ref, burst_feat], dim=1))
 
@@ -170,36 +164,33 @@ class EBFA(nn.Module):
         # Input: (B, 4, H/2, W/2)    
         # Output: (1, 3, 4H, 4W)
         ###################
+
         B, N, C, H, W = burst.shape
-        # base_frame = burst[:, 0, ...]
+        align_feat = []
 
-        # burst = burst[0]
-        burst = burst.view(-1, C, H, W)         # B * N, C, H/2, W/2
-        burst_feat = self.conv1(burst)          # (B, num_features, H/2, W/2)
+        for i in range(B):
+            burst_feat = burst[i]
+            burst_feat = self.conv1(burst_feat)          # (B, num_features, H/2, W/2)
 
-        # burst_feat = burst_feat.view(B, N, self.num_features, H, W)
-        ##################################################
-        ####### Edge Boosting Feature Alignment #################
-        ##################################################
+            ##################################################
+            ####### Edge Boosting Feature Alignment #################
+            ##################################################
+
+            base_frame_feat = burst_feat[0].unsqueeze(0)
+            burst_feat = self.encoder(burst_feat)               
+            
+            ## Burst Feature Alignment
+            burst_feat = self.def_alignment(burst_feat)
+
+            ## Refined Aligned Feature
+            burst_feat = self.feat_ext1(burst_feat)                
+            Residual = burst_feat - base_frame_feat
+            Residual = self.cor_conv1(Residual)
+            burst_feat = Residual + burst_feat          # (B, num_features, H/2, W/2)
+            align_feat.append(burst_feat)
+        align_feat = torch.stack(align_feat, dim=0)
         
-        base_frame_feat = burst_feat[::N, ...].unsqueeze(1) # B, 1, C, H/2, W/2
-        base_frame_feat = base_frame_feat.repeat(1, N, 1, 1, 1) # 
-        base_frame_feat = base_frame_feat.view(-1, self.num_features, H, W)
-        # burst_feat = burst_feat.view(-1, self.num_features, H, W)
-
-        # base_frame_feat = burst_feat[0].unsqueeze(0)
-        burst_feat = self.encoder(burst_feat)
-
-        ## Burst Feature Alignment
-        burst_feat = self.def_alignment(burst_feat, N)
-
-        ## Refined Aligned Feature
-        burst_feat = self.feat_ext1(burst_feat)                
-        Residual = burst_feat - base_frame_feat
-        Residual = self.cor_conv1(Residual)
-        burst_feat = Residual + burst_feat          # (B, num_features, H/2, W/2)
-        
-        return burst_feat.view(B, N, -1, H, W)
+        return align_feat
 
 
 class MergeBlockUNetDiff(nn.Module):
