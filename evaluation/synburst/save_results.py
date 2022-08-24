@@ -31,7 +31,7 @@ from dataset.synthetic_burst_val_set import SyntheticBurstVal
 from data.postprocessing_functions import SimplePostProcess
 
 
-def save_results(setting_name):
+def save_results(setting_name, process=False):
     """ Saves network outputs on the SyntheticBurst validation set. setting_name denotes the name of the experiment
         setting to be used. """
 
@@ -63,12 +63,13 @@ def save_results(setting_name):
 
             with torch.no_grad():
                 net_pred, _ = net(burst)
-
-                # Normalize to 0  2^14 range and convert to numpy array
-                net_pred_np = (net_pred.squeeze(0).permute(1, 2, 0).clamp(0.0, 1.0) * 2 ** 14).cpu().numpy().astype(
-                    np.uint16)
                 
-                # pred_process = process_fn.process(net_pred.squeeze(0).cpu(), meta_info)
+                if process:
+                    net_pred_np = process_fn.process(net_pred.squeeze(0).cpu(), meta_info)
+                else:
+                    # Normalize to 0  2^14 range and convert to numpy array
+                    net_pred_np = (net_pred.squeeze(0).permute(1, 2, 0).clamp(0.0, 1.0) * 2 ** 14).cpu().numpy().astype(
+                    np.uint16)
 
                 # Save predictions as png
                 cv2.imwrite('{}/{}.png'.format(out_dir, burst_name), net_pred_np)
@@ -78,7 +79,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Saves network outputs on the SyntheticBurst validation set. '
                                                  'setting_name denotes the name of the experiment setting to be used.')
     parser.add_argument('setting', type=str, help='Name of experiment setting')
+    parser.add_argument('--process', action='store_true', default=False)
 
     args = parser.parse_args()
 
-    save_results(args.setting)
+    save_results(args.setting, args.process)
