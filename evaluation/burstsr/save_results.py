@@ -20,6 +20,7 @@ if env_path not in sys.path:
     sys.path.append(env_path)
 
 from dataset.burstsr_dataset import get_burstsr_val_set, CanonImage
+# from dataset.burstsr_dataset_bip import BurstSRDataset
 import torch
 
 import argparse
@@ -30,7 +31,7 @@ import tqdm
 from admin.environment import env_settings
 
 
-def save_results(setting_name):
+def save_results(setting_name, process=False):
     """ Saves network outputs on the BurstSR validation set. setting_name denotes the name of the experiment
         setting to be used. """
     expr_module = importlib.import_module('evaluation.burstsr.experiments.{}'.format(setting_name))
@@ -46,7 +47,7 @@ def save_results(setting_name):
         os.makedirs(out_dir, exist_ok=True)
 
         net = n.load_net()
-        device = 'cuda'
+        device = 'cuda:0'
         net.to(device).train(False)
 
         for idx in tqdm.tqdm(range(len(dataset))):
@@ -62,15 +63,17 @@ def save_results(setting_name):
 
             with torch.no_grad():
                 net_pred, _ = net(burst)
-
-            # net_pred_np = (net_pred.squeeze(0).permute(1, 2, 0).clamp(0.0, 1.0) * 2 ** 14).cpu().numpy().astype(
-            #     np.uint16)
             
-            pred_proc_np = CanonImage.generate_processed_image(net_pred[0].cpu(), meta_info_burst, return_np=True,
-                                                               gamma=True,
-                                                               smoothstep=True,
-                                                               no_white_balance=False,
-                                                               external_norm_factor=None)
+            if process:
+                pred_proc_np = CanonImage.generate_processed_image(net_pred[0].cpu(), meta_info_burst, return_np=True,
+                                                                gamma=True,
+                                                                smoothstep=True,
+                                                                no_white_balance=False,
+                                                                external_norm_factor=None)
+                pred_proc_np = cv2.cvtColor(pred_proc_np, cv2.COLOR_RGB2BGR)
+            else:
+                pred_proc_np = (net_pred.squeeze(0).permute(1, 2, 0).clamp(0.0, 1.0) * 2 ** 14).cpu().numpy().astype(
+                np.uint16)
 
             # Save predictions as png
             cv2.imwrite('{}/{}.png'.format(out_dir, burst_name), pred_proc_np)
@@ -80,7 +83,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Saves network outputs on the BurstSR validation set. setting_name '
                                                  'denotes the name of the experiment setting to be used. ')
     parser.add_argument('setting', type=str, help='Name of experiment setting')
+    parser.add_argument('--process', dest='load_saved', action='store_true', default=False)
 
     args = parser.parse_args()
 
-    save_results(args.setting)
+    save_results(args.setting, args.process)

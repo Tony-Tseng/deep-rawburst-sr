@@ -390,7 +390,7 @@ class BurstSRDataset(torch.utils.data.Dataset):
             'burst': burst,
             'frame_gt': frame_gt,
             'meta_info_burst': meta_info_burst,
-            'meta_info_burst': meta_info_gt
+            'meta_info_gt': meta_info_gt
         })
 
         return data
