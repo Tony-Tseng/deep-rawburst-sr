@@ -83,7 +83,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Saves network outputs on the BurstSR validation set. setting_name '
                                                  'denotes the name of the experiment setting to be used. ')
     parser.add_argument('setting', type=str, help='Name of experiment setting')
-    parser.add_argument('--process', dest='load_saved', action='store_true', default=False)
+    parser.add_argument('--process', action='store_true', default=False)
 
     args = parser.parse_args()
 
