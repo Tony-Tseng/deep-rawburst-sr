@@ -23,6 +23,8 @@ from models.loss.image_quality_v2 import PixelWiseError, PSNR
 from models.alignment.pwcnet import PWCNet
 from admin.environment import env_settings
 
+from dataset.burstsr_dataset_bip import BurstSRDataset
+
 
 def run(settings):
     settings.description = 'Default settings for fine-tuning a DBSR model on BurstSR dataset'
@@ -32,27 +34,35 @@ def run(settings):
     settings.multi_gpu = False
     settings.print_interval = 100
 
-    settings.burst_sz = 8
+    settings.burst_sz = 14
 
-    data_processing_train = processing.BurstSRProcessing(transform=None, random_flip=True,
-                                                         substract_black_level=True,
-                                                         crop_sz=crop_sz)
-    burstsr_train = datasets.BurstSRDataset(split='train')
+    # data_processing_train = processing.BurstSRProcessing(transform=None, random_flip=True,
+    #                                                      substract_black_level=True,
+    #                                                      crop_sz=crop_sz)
+    # burstsr_train = datasets.BurstSRDataset(split='train')
+
+    # # Train sampler and loader
+    # dataset_train = sampler.RandomBurst([burstsr_train], [1], burst_size=settings.burst_sz,
+    #                                     samples_per_epoch=settings.batch_size * 1000, processing=data_processing_train)
+
+    # loader_train = DataLoader('train', dataset_train, training=True, num_workers=settings.num_workers,
+    #                           stack_dim=0, batch_size=settings.batch_size)
+
+    # # ********************* Val
+    # data_processing_val = processing.BurstSRProcessing(transform=None,
+    #                                                    substract_black_level=True, crop_sz=crop_sz)
+    # burstsr_val = datasets.BurstSRDataset(split='val')
 
     # Train sampler and loader
-    dataset_train = sampler.RandomBurst([burstsr_train], [1], burst_size=settings.burst_sz,
-                                        samples_per_epoch=settings.batch_size * 1000, processing=data_processing_train)
-
+    # dataset_val = sampler.IndexedBurst([burstsr_val], burst_size=settings.burst_sz, processing=data_processing_val)
+    # loader_val = DataLoader('val', dataset_val, training=False, num_workers=settings.num_workers,
+    #                         stack_dim=0, batch_size=settings.batch_size)
+    dataset_train = BurstSRDataset(root=settings.env.burstsr_dir,  split='train', burst_size=14, crop_sz=24, random_flip=True)
     loader_train = DataLoader('train', dataset_train, training=True, num_workers=settings.num_workers,
                               stack_dim=0, batch_size=settings.batch_size)
 
-    # ********************* Val
-    data_processing_val = processing.BurstSRProcessing(transform=None,
-                                                       substract_black_level=True, crop_sz=crop_sz)
-    burstsr_val = datasets.BurstSRDataset(split='val')
 
-    # Train sampler and loader
-    dataset_val = sampler.IndexedBurst([burstsr_val], burst_size=settings.burst_sz, processing=data_processing_val)
+    dataset_val = BurstSRDataset(root=settings.env.burstsr_dir,  split='val', burst_size=14, crop_sz=80, random_flip=False)
     loader_val = DataLoader('val', dataset_val, training=False, num_workers=settings.num_workers,
                             stack_dim=0, batch_size=settings.batch_size)
 
@@ -75,10 +85,9 @@ def run(settings):
                     weights_path='{}/pwcnet-network-default.pth'.format(env_settings().pretrained_nets_dir))
     actor = dbsr_actors.DBSRRealWorldActor(net=net, objective=objective, loss_weight=loss_weight, alignment_net=pwcnet)
 
-    optimizer = optim.AdamW(actor.net.parameters(), lr=1e-4)
-
-    lr_scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, 300, eta_min=1e-6)
+    optimizer = optim.AdamW(actor.net.parameters(), lr=5e-5)
+    lr_scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, 100, eta_min=1e-6)
     
     trainer = SimpleTrainer(actor, [loader_train, loader_val], optimizer, settings, lr_scheduler)
 
-    trainer.train(50, load_latest=True, fail_safe=True)
+    trainer.train(40, load_latest=True, fail_safe=True)
