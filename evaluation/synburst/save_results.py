@@ -50,6 +50,8 @@ def save_results(setting_name, process=False):
         net.to(device).train(False)
 
         out_dir = '{}/synburst/{}'.format(base_results_dir, n.get_unique_name())
+        if process:
+            out_dir = '{}/synburst/process/{}'.format(base_results_dir, n.get_unique_name())
         os.makedirs(out_dir, exist_ok=True)
 
         for idx in tqdm.tqdm(range(len(dataset))):

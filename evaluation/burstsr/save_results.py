@@ -44,6 +44,8 @@ def save_results(setting_name, process=False):
 
     for n in network_list:
         out_dir = '{}/burstsr/{}'.format(base_results_dir, n.get_unique_name())
+        if process:
+            out_dir = '{}/burstsr/process/{}'.format(base_results_dir, n.get_unique_name())
         os.makedirs(out_dir, exist_ok=True)
 
         net = n.load_net()
