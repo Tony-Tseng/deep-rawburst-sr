@@ -68,11 +68,11 @@ class ZurichRAW2RGB(BaseImageDataset):
     def _get_image(self, im_id):
         path = os.path.join(self.img_pth, self.image_list[im_id])
         img = cv2.imread(path)
-        if random.randint(0,1) == 1 and self.split=='train':
-            flag_aug = random.randint(1,7)
-            img = self.data_augmentation(img, flag_aug)
-        else:
-            img = img
+        # if random.randint(0,1) == 1 and self.split=='train':
+        #     flag_aug = random.randint(1,7)
+        #     img = self.data_augmentation(img, flag_aug)
+        # else:
+        img = img
         return img
     
     def __getitem__(self, index):

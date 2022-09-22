@@ -47,7 +47,7 @@ def compute_score(setting_name, load_saved=False):
     dataset = SyntheticBurstVal()
 
     metrics = ('psnr', 'ssim', 'lpips')
-    device = 'cuda:1'
+    device = 'cuda:0'
     boundary_ignore = 40
     metrics_all = {}
     scores = {}
